@@ -137,4 +137,8 @@ export class PrestashopClient {
     const details = await Promise.all(ids.map((id) => this.getResourceById<TResource>(resourceName, id)));
     return details;
   }
+
+  getImageUrl(resourceName: string, id: number | string, imageId: number | string): string {
+    return `${this.baseUrl}/images/${resourceName}/${id}/${imageId}?ws_key=${this.apiKey}`;
+  }
 }

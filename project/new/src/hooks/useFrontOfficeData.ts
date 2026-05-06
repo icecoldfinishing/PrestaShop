@@ -15,7 +15,7 @@ interface AsyncState<T> {
   error: string | null;
 }
 
-export function useProducts(limit = 12): AsyncState<ProductItem[]> {
+export function useProducts(page = 1, limit = 12): AsyncState<ProductItem[]> {
   const [state, setState] = useState<AsyncState<ProductItem[]>>({
     data: [],
     loading: true,
@@ -28,7 +28,7 @@ export function useProducts(limit = 12): AsyncState<ProductItem[]> {
     async function run(): Promise<void> {
       setState((prev) => ({ ...prev, loading: true, error: null }));
       try {
-        const data = await fetchProductList(limit);
+        const data = await fetchProductList(page, limit);
         if (!cancelled) {
           setState({ data, loading: false, error: null });
         }
@@ -47,7 +47,7 @@ export function useProducts(limit = 12): AsyncState<ProductItem[]> {
     return () => {
       cancelled = true;
     };
-  }, [limit]);
+  }, [page, limit]);
 
   return state;
 }

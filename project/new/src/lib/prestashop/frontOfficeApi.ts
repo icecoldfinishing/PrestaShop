@@ -9,6 +9,8 @@ export interface ProductItem {
   price: string;
   reference: string;
   shortDescription: string;
+  imageId: number | null;
+  imageUrl: string | null;
 }
 
 export interface ProductDetail extends ProductItem {
@@ -57,6 +59,9 @@ function mapProduct(product: XmlObject): ProductDetail {
   const description = getFieldText(product, "description");
   const price = getFieldText(product, "price");
   const active = getFieldText(product, "active") === "1";
+  
+  const imageId = getFieldNumber(product, "id_default_image") ?? null;
+  const imageUrl = imageId ? prestashopClient.getImageUrl("products", id, imageId) : null;
 
   return {
     id,
@@ -65,14 +70,17 @@ function mapProduct(product: XmlObject): ProductDetail {
     shortDescription,
     description,
     price,
-    active
+    active,
+    imageId,
+    imageUrl
   };
 }
 
-export async function fetchProductList(limit = 12): Promise<ProductItem[]> {
+export async function fetchProductList(page = 1, limit = 12): Promise<ProductItem[]> {
+  const offset = Math.max(0, (page - 1) * limit);
   const list = await prestashopClient.getResource("products", {
     display: "minimum",
-    limit: `0,${limit}`
+    limit: `${offset},${limit}`
   });
 
   const ids = extractResourceIds(list.parsed, "products").slice(0, limit);
