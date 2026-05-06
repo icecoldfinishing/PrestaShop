@@ -1,0 +1,38 @@
+services:
+  # Base de données (MySQL 8.0 est recommandé pour PS 8.2)
+  db:
+    image: mysql:8.0
+    container_name: ps-db
+    command: --default-authentication-plugin=mysql_native_password
+    volumes:
+      - db_data:/var/lib/mysql
+    environment:
+      - MYSQL_ROOT_PASSWORD=admin
+      - MYSQL_DATABASE=prestashop
+    networks:
+      - ps-network
+
+  # Application PrestaShop 8.2.6
+  prestashop:
+    image: prestashop/prestashop:8.2.6
+    container_name: ps-app
+    depends_on:
+      - db
+    ports:
+      - "8088:80"
+    environment:
+      - DB_SERVER=db
+      - DB_USER=root
+      - DB_PASSWD=admin
+      - DB_NAME=prestashop
+      - PS_DOMAIN=localhost:8088
+      - PS_INSTALL_AUTO=0
+    networks:
+      - ps-network
+
+networks:
+  ps-network:
+    driver: bridge
+
+volumes:
+  db_data:
