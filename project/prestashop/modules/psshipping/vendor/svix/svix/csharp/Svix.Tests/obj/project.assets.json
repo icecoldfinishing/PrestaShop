@@ -6580,11 +6580,11 @@
   "project": {
     "version": "1.0.0",
     "restore": {
-      "projectUniqueName": "E:\\EVAL\\1_prestashop\\project\\prestashop\\modules\\psshipping\\vendor\\svix\\svix\\csharp\\Svix.Tests\\Svix.Tests.csproj",
+      "projectUniqueName": "E:\\EVAL\\1_PrestaShop\\project\\prestashop\\modules\\psshipping\\vendor\\svix\\svix\\csharp\\Svix.Tests\\Svix.Tests.csproj",
       "projectName": "Svix.Tests",
-      "projectPath": "E:\\EVAL\\1_prestashop\\project\\prestashop\\modules\\psshipping\\vendor\\svix\\svix\\csharp\\Svix.Tests\\Svix.Tests.csproj",
+      "projectPath": "E:\\EVAL\\1_PrestaShop\\project\\prestashop\\modules\\psshipping\\vendor\\svix\\svix\\csharp\\Svix.Tests\\Svix.Tests.csproj",
       "packagesPath": "C:\\Users\\Rohy\\.nuget\\packages\\",
-      "outputPath": "E:\\EVAL\\1_prestashop\\project\\prestashop\\modules\\psshipping\\vendor\\svix\\svix\\csharp\\Svix.Tests\\obj\\",
+      "outputPath": "E:\\EVAL\\1_PrestaShop\\project\\prestashop\\modules\\psshipping\\vendor\\svix\\svix\\csharp\\Svix.Tests\\obj\\",
       "projectStyle": "PackageReference",
       "fallbackFolders": [
         "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
@@ -6606,8 +6606,8 @@
         "net5.0": {
           "targetAlias": "net5.0",
           "projectReferences": {
-            "E:\\EVAL\\1_prestashop\\project\\prestashop\\modules\\psshipping\\vendor\\svix\\svix\\csharp\\Svix\\Svix.csproj": {
-              "projectPath": "E:\\EVAL\\1_prestashop\\project\\prestashop\\modules\\psshipping\\vendor\\svix\\svix\\csharp\\Svix\\Svix.csproj"
+            "E:\\EVAL\\1_PrestaShop\\project\\prestashop\\modules\\psshipping\\vendor\\svix\\svix\\csharp\\Svix\\Svix.csproj": {
+              "projectPath": "E:\\EVAL\\1_PrestaShop\\project\\prestashop\\modules\\psshipping\\vendor\\svix\\svix\\csharp\\Svix\\Svix.csproj"
             }
           }
         }
