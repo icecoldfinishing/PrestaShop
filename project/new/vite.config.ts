@@ -5,7 +5,7 @@ export default defineConfig({
   plugins: [react()],
   server: {
     proxy: {
-      "/odoo": {
+      "/prestashop": {
         target: "http://localhost:8088",
         changeOrigin: true,
         secure: false,
