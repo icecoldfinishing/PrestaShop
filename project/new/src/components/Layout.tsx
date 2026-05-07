@@ -43,6 +43,22 @@ export default function Layout() {
                   <li className="nav-item">
                     <NavLink
                       className={({ isActive }) => `nav-link px-3 ${isActive ? "active fw-semibold" : ""}`}
+                      to="/customers"
+                    >
+                      Customers
+                    </NavLink>
+                  </li>
+                  <li className="nav-item">
+                    <NavLink
+                      className={({ isActive }) => `nav-link px-3 ${isActive ? "active fw-semibold" : ""}`}
+                      to="/orders"
+                    >
+                      Orders
+                    </NavLink>
+                  </li>
+                  <li className="nav-item">
+                    <NavLink
+                      className={({ isActive }) => `nav-link px-3 ${isActive ? "active fw-semibold" : ""}`}
                       to="/modules/products"
                     >
                       Modules

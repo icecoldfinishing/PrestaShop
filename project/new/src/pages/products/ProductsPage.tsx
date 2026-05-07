@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { useProducts } from "../../hooks/useFrontOfficeData";
+import { useProducts } from "../../hooks/products/useHomeData";
 
 export default function ProductsPage() {
   const [page, setPage] = useState(1);
