@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { useProducts } from "../../hooks/useFrontOfficeData";
+import { useProducts } from "../../hooks/products/useHomeData";
 
 export default function Home() {
   const { data: featuredProducts, loading, error } = useProducts(1, 4);

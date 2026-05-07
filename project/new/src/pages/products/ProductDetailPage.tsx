@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { useProductDetail } from "../../hooks/useFrontOfficeData";
+import { useProductDetail } from "../../hooks/products/useHomeData";
 
 export default function ProductDetailPage() {
   const params = useParams();

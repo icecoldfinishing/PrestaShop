@@ -1,7 +1,7 @@
-import { prestashopClient } from ".";
-import { extractResourceIds } from "./resourceUtils";
-import { asObject, getFieldNumber, getFieldText } from "./valueExtractors";
-import type { XmlObject } from "../xml/xmlParser";
+import { prestashopClient } from "../..";
+import { extractResourceIds } from "../../resourceUtils";
+import { asObject, getFieldNumber, getFieldText } from "../../valueExtractors";
+import type { XmlObject } from "../../../xml/xmlParser";
 
 export interface ProductItem {
   id: number;

@@ -1,6 +1,6 @@
 import { Link, useParams } from "react-router-dom";
 
-import { useModuleRecords } from "../../hooks/useFrontOfficeData";
+import { useModuleRecords } from "../../hooks/products/useHomeData";
 import { getFieldText } from "../../lib/prestashop/valueExtractors";
 
 const MODULES = [

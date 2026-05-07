@@ -6,8 +6,8 @@ import {
   fetchProductList,
   type ProductDetail,
   type ProductItem
-} from "../lib/prestashop/frontOfficeApi";
-import type { XmlObject } from "../lib/xml/xmlParser";
+} from "../../lib/prestashop/api/products/homeApi";
+import type { XmlObject } from "../../lib/xml/xmlParser";
 
 interface AsyncState<T> {
   data: T;
