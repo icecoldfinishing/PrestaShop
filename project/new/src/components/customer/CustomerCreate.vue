@@ -1,130 +1,120 @@
-<script setup>
+<script setup lang="ts">
 import { ref } from 'vue';
 import { psPost } from '../../utils/prestashop-api';
 
-const form = ref({
+const emit = defineEmits(['back']);
+
+const customer = ref({
     firstname: '',
     lastname: '',
     email: '',
     password: '',
-    active: 1,
-    id_lang: 1,
-    id_default_group: 3
+    active: true
 });
 
-const loading = ref(false);
-const success = ref(null);
-const error = ref(null);
-
-const resetForm = () => {
-    form.value = {
-        firstname: '',
-        lastname: '',
-        email: '',
-        password: '',
-        active: 1,
-        id_lang: 1,
-        id_default_group: 3
-    };
-};
+const saving = ref(false);
+const errorMessage = ref('');
 
 const createCustomer = async () => {
-    loading.value = true;
-    success.value = null;
-    error.value = null;
+    errorMessage.value = '';
+
+    if (!customer.value.firstname || !customer.value.lastname || 
+        !customer.value.email || !customer.value.password) {
+        errorMessage.value = "Prénom, Nom, Email et Mot de passe sont obligatoires";
+        return;
+    }
+
+    saving.value = true;
 
     try {
-        const xmlPayload = `
-<prestashop>
-  <customer>
-    <firstname><![CDATA[${form.value.firstname}]]></firstname>
-    <lastname><![CDATA[${form.value.lastname}]]></lastname>
-    <email><![CDATA[${form.value.email}]]></email>
-    <passwd><![CDATA[${form.value.password}]]></passwd>
-    <active>${form.value.active}</active>
-    <id_lang>${form.value.id_lang}</id_lang>
-    <id_default_group>${form.value.id_default_group}</id_default_group>
-  </customer>
-</prestashop>
-        `.trim();
+        const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<prestashop xmlns:xlink="http://www.w3.org/1999/xlink">
+    <customer>
+        <firstname><![CDATA[${customer.value.firstname}]]></firstname>
+        <lastname><![CDATA[${customer.value.lastname}]]></lastname>
+        <email><![CDATA[${customer.value.email}]]></email>
+        <passwd><![CDATA[${customer.value.password}]]></passwd>
+        <active>${customer.value.active ? '1' : '0'}</active>
+        <id_gender>1</id_gender>
+        <id_default_group>3</id_default_group>
+    </customer>
+</prestashop>`;
 
-        await psPost('customers', xmlPayload);
-
-        success.value = "Customer created successfully!";
+        await psPost('customers', xml);
+        
+        alert("Client créé avec succès");
         resetForm();
+        emit('back');
 
-    } catch (err) {
-        console.error(err);
-        error.value = err?.message || "Error creating customer";
+    } catch (error: any) {
+        console.error(error);
+        errorMessage.value = error.response?.data?.prestashop?.errors?.error?.message 
+                         || "Erreur lors de la création du client";
     } finally {
-        loading.value = false;
+        saving.value = false;
     }
+};
+
+const resetForm = () => {
+    customer.value.firstname = '';
+    customer.value.lastname = '';
+    customer.value.email = '';
+    customer.value.password = '';
+    customer.value.active = true;
 };
 </script>
 
 <template>
-<div class="container py-4">
-    <h2 class="fw-bold mb-4">Create Customer</h2>
-
-    <!-- SUCCESS -->
-    <div v-if="success" class="alert alert-success">
-        {{ success }}
-    </div>
-
-    <!-- ERROR -->
-    <div v-if="error" class="alert alert-danger">
-        {{ error }}
-    </div>
-
-    <form @submit.prevent="createCustomer" class="card p-4 shadow-sm">
-
-        <div class="row g-3">
-
-            <div class="col-md-6">
-                <label class="form-label">First Name *</label>
-                <input v-model="form.firstname" class="form-control" required />
-            </div>
-
-            <div class="col-md-6">
-                <label class="form-label">Last Name *</label>
-                <input v-model="form.lastname" class="form-control" required />
-            </div>
-
-            <div class="col-md-6">
-                <label class="form-label">Email *</label>
-                <input v-model="form.email" type="email" class="form-control" required />
-            </div>
-
-            <div class="col-md-6">
-                <label class="form-label">Password *</label>
-                <input v-model="form.password" type="password" class="form-control" required />
-            </div>
-
-            <div class="col-md-4">
-                <label class="form-label">Active</label>
-                <select v-model="form.active" class="form-select">
-                    <option :value="1">Yes</option>
-                    <option :value="0">No</option>
-                </select>
-            </div>
-
-            <div class="col-md-4">
-                <label class="form-label">Lang ID</label>
-                <input v-model="form.id_lang" type="number" class="form-control" />
-            </div>
-
-            <div class="col-md-4">
-                <label class="form-label">Default Group</label>
-                <input v-model="form.id_default_group" type="number" class="form-control" />
-            </div>
-
+    <div class="container py-4">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h2>Créer un Nouveau Client</h2>
+            <button class="btn btn-secondary" @click="emit('back')">
+                Retour à la liste
+            </button>
         </div>
 
-        <button class="btn btn-primary mt-4 w-100" :disabled="loading">
-            <span v-if="loading">Creating...</span>
-            <span v-else>Create Customer</span>
-        </button>
+        <div class="card">
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label">Prénom <span class="text-danger">*</span></label>
+                        <input v-model="customer.firstname" class="form-control" />
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Nom <span class="text-danger">*</span></label>
+                        <input v-model="customer.lastname" class="form-control" />
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label">Email <span class="text-danger">*</span></label>
+                        <input v-model="customer.email" type="email" class="form-control" />
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label">Mot de passe <span class="text-danger">*</span></label>
+                        <input v-model="customer.password" type="password" class="form-control" />
+                    </div>
+                    <div class="col-12">
+                        <input type="checkbox" v-model="customer.active" class="form-check-input me-2" />
+                        <label class="form-check-label">Client actif</label>
+                    </div>
+                </div>
 
-    </form>
-</div>
+                <div class="mt-4">
+                    <button 
+                        class="btn btn-primary me-3"
+                        @click="createCustomer"
+                        :disabled="saving"
+                    >
+                        {{ saving ? 'Création en cours...' : 'Créer le Client' }}
+                    </button>
+                    <button class="btn btn-secondary" @click="emit('back')">
+                        Annuler
+                    </button>
+                </div>
+
+                <div v-if="errorMessage" class="alert alert-danger mt-3">
+                    {{ errorMessage }}
+                </div>
+            </div>
+        </div>
+    </div>
 </template>

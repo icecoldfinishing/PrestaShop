@@ -1,111 +1,122 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
-import { psGet, psPut, getXmlText } from '../../utils/prestashop-api';
+import { ref, watch } from 'vue';
+import { getXmlText, psGet, psPut } from '../../utils/prestashop-api';
 
-const props = defineProps<{
-    id: number // Reçu depuis App.vue
-}>();
+const props = defineProps<{ customerId: number | null }>();
+const emit = defineEmits<{ (e: 'done'): void; (e: 'cancel'): void }>();
 
-const emit = defineEmits(['close']); // Pour revenir à la liste
-
-const loading = ref(false);
-const saving = ref(false);
-const error = ref<string | null>(null);
-const success = ref<string | null>(null);
-
-const form = ref({
-    id: props.id,
+const customer = ref<any>({
+    id: 0,
     firstname: '',
     lastname: '',
     email: '',
-    password: '',
-    active: 1,
-    id_lang: 1,
-    id_default_group: 3
+    active: true
 });
 
-const loadCustomer = async () => {
+const loading = ref(false);
+const saving = ref(false);
+
+const getCustomer = async (id: number) => {
     loading.value = true;
     try {
-        const data = await psGet(`customers/${props.id}`, '');
-        const c = data?.prestashop?.customer;
-        if (!c) throw new Error("Customer not found");
+        const data = await psGet('customers', id, {
+            display: '[id,firstname,lastname,email,active]'
+        });
 
-        form.value = {
-            id: Number(c.id),
-            firstname: getXmlText(c.firstname),
-            lastname: getXmlText(c.lastname),
-            email: c.email,
-            password: '',
-            active: Number(c.active),
-            id_lang: Number(c.id_lang || 1),
-            id_default_group: Number(c.id_default_group || 3)
-        };
-    } catch (err: any) {
-        error.value = err.message;
+        const c = data?.prestashop?.customer;
+        if (c) {
+            customer.value = {
+                id: Number(c.id),
+                firstname: getXmlText(c.firstname),
+                lastname: getXmlText(c.lastname),
+                email: getXmlText(c.email),
+                active: c.active === '1'
+            };
+        }
+    } catch (error) {
+        console.error('Error fetching customer:', error);
     } finally {
         loading.value = false;
     }
 };
 
 const updateCustomer = async () => {
+    if (!customer.value.id) {
+        return;
+    }
+
     saving.value = true;
     try {
-        const xmlPayload = `
-        <prestashop>
-          <customer>
-            <id>${form.value.id}</id>
-            <firstname><![CDATA[${form.value.firstname}]]></firstname>
-            <lastname><![CDATA[${form.value.lastname}]]></lastname>
-            <email><![CDATA[${form.value.email}]]></email>
-            ${form.value.password ? `<passwd><![CDATA[${form.value.password}]]></passwd>` : ''}
-            <active>${form.value.active}</active>
-            <id_lang>${form.value.id_lang}</id_lang>
-            <id_default_group>${form.value.id_default_group}</id_default_group>
-          </customer>
-        </prestashop>`.trim();
+        const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<prestashop xmlns:xlink="http://www.w3.org/1999/xlink">
+    <customer>
+        <id>${customer.value.id}</id>
+        <firstname><![CDATA[${customer.value.firstname}]]></firstname>
+        <lastname><![CDATA[${customer.value.lastname}]]></lastname>
+        <email><![CDATA[${customer.value.email}]]></email>
+        <active>${customer.value.active ? '1' : '0'}</active>
+    </customer>
+</prestashop>`;
 
-        await psPut(`customers/${form.value.id}`, xmlPayload);
-        success.value = "Customer updated successfully";
-        setTimeout(() => emit('close'), 1500); // Retour à la liste après 1.5s
-    } catch (err: any) {
-        error.value = err.message;
+        await psPut(`customers/${customer.value.id}`, xml);
+
+        alert('Client mis à jour avec succès !');
+        emit('done');
+    } catch (error) {
+        console.error('Error updating customer:', error);
+        alert('Erreur lors de la mise à jour');
     } finally {
         saving.value = false;
     }
 };
 
-onMounted(loadCustomer);
+watch(
+    () => props.customerId,
+    (id) => {
+        if (typeof id === 'number' && !Number.isNaN(id)) {
+            getCustomer(id);
+        }
+    },
+    { immediate: true }
+);
 </script>
 
 <template>
     <div class="container py-4">
-        <div class="d-flex justify-content-between align-items-center mb-4">
-            <h2 class="fw-bold">Edit Customer #{{ id }}</h2>
-            <button class="btn btn-secondary" @click="emit('close')">Back to List</button>
+        <h2 class="fw-bold mb-4">Modifier Client #{{ customer.id }}</h2>
+
+        <div v-if="loading" class="text-center py-5">
+            <div class="spinner-border text-secondary"></div>
         </div>
 
-        <div v-if="error" class="alert alert-danger">{{ error }}</div>
-        <div v-if="success" class="alert alert-success">{{ success }}</div>
+        <div v-else class="card shadow-sm">
+            <div class="card-body">
+                <div class="mb-3">
+                    <label>Prénom</label>
+                    <input v-model="customer.firstname" class="form-control" />
+                </div>
+                <div class="mb-3">
+                    <label>Nom</label>
+                    <input v-model="customer.lastname" class="form-control" />
+                </div>
+                <div class="mb-3">
+                    <label>Email</label>
+                    <input v-model="customer.email" type="email" class="form-control" />
+                </div>
+                <div class="mb-3">
+                    <label class="form-check-label">
+                        <input type="checkbox" v-model="customer.active" class="form-check-input" />
+                        Actif
+                    </label>
+                </div>
 
-        <form v-if="!loading" @submit.prevent="updateCustomer" class="card p-4 shadow-sm">
-            <div class="row g-3">
-                <div class="col-md-6">
-                    <label class="form-label">First Name</label>
-                    <input v-model="form.firstname" class="form-control" required />
-                </div>
-                <div class="col-md-6">
-                    <label class="form-label">Last Name</label>
-                    <input v-model="form.lastname" class="form-control" required />
-                </div>
-                <div class="col-md-12">
-                    <label class="form-label">Email</label>
-                    <input v-model="form.email" type="email" class="form-control" required />
-                </div>
+                <button @click="updateCustomer" class="btn btn-primary me-2" :disabled="saving">
+                    {{ saving ? 'Enregistrement...' : 'Enregistrer' }}
+                </button>
+                <button @click="emit('cancel')" class="btn btn-secondary">
+                    Annuler
+                </button>
             </div>
-            <button class="btn btn-warning mt-4 w-100" :disabled="saving">
-                {{ saving ? 'Saving...' : 'Update Customer' }}
-            </button>
-        </form>
+        </div>
     </div>
 </template>

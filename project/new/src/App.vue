@@ -6,17 +6,37 @@ import ApiResponseViewer from "./components/API/ApiResponseViewer.vue";
 
 import ProductList from "./components/product/ProductList.vue";
 import ProductCreate from "./components/product/ProductCreate.vue";
+import ProductEdit from "./components/product/ProductEdit.vue";
+
+import CustomerCreate from "./components/customer/CustomerCreate.vue";
 import CustomerList from "./components/customer/CustomerList.vue";
+import CustomerEdit from "./components/customer/CustomerEdit.vue";
 import OrderList from "./components/order/OrderList.vue";
 
 import "bootstrap/dist/css/bootstrap.min.css";
 import "bootstrap/dist/js/bootstrap.bundle.min.js";
 
-const selectedCustomerId = ref(null);
-
-
-
 const currentPage = ref("products-list");
+
+const selectedProductId = ref(null);
+const openEditProduct = (id) => {
+  selectedProductId.value = id;
+  currentPage.value = "products-edit";
+};
+const closeEditProduct = () => {
+  currentPage.value = "products-list";
+  selectedProductId.value = null;
+};
+
+const selectedCustomerId = ref(null);
+const openEditCustomer = (id) => {
+  selectedCustomerId.value = id;
+  currentPage.value = "customers-edit";
+};
+const closeEditCustomer = () => {
+  currentPage.value = "customers-list";
+  selectedCustomerId.value = null;
+};
 </script>
 
 <template>
@@ -76,27 +96,37 @@ const currentPage = ref("products-list");
           </li>
 
           <!-- CUSTOMERS -->
-          <li class="nav-item">
+            <li class="nav-item dropdown">
             <a
-              class="nav-link"
-              :class="{ active: currentPage === 'customers-list' }"
+              class="nav-link dropdown-toggle"
               href="#"
-              @click.prevent="currentPage = 'customers-list'"
+              data-bs-toggle="dropdown"
             >
               Customers
             </a>
-          </li>
 
-          <!-- ORDERS -->
-          <li class="nav-item">
-            <a
-              class="nav-link"
-              :class="{ active: currentPage === 'orders-list' }"
-              href="#"
-              @click.prevent="currentPage = 'orders-list'"
-            >
-              Orders
-            </a>
+            <ul class="dropdown-menu">
+              <li>
+                <a
+                  class="dropdown-item"
+                  :class="{ active: currentPage === 'customers-list' }"
+                  href="#"
+                  @click.prevent="currentPage = 'customers-list'"
+                >
+                  List
+                </a>
+              </li>
+
+              <li>
+                <a
+                  class="dropdown-item"
+                  href="#"
+                  @click.prevent="currentPage = 'customers-create'"
+                >
+                  Create
+                </a>
+              </li>
+            </ul>
           </li>
 
           <!-- UTILS -->
@@ -137,13 +167,33 @@ const currentPage = ref("products-list");
   </nav>
 
   <div class="container mt-4">
-    <ProductList v-if="currentPage === 'products-list'" />
-    <ProductCreate v-if="currentPage === 'products-create'" />
+    <ProductList v-if="currentPage === 'products-list'" @edit="openEditProduct" />
+    <ProductCreate 
+        v-if="currentPage === 'products-create'"
+        @done="currentPage = 'products-list'"
+        @cancel="currentPage = 'products-list'"
+    />
+    <ProductEdit
+      v-if="currentPage === 'products-edit'"
+      :product-id="selectedProductId"
+      @done="closeEditProduct"
+      @cancel="closeEditProduct"
+    />
 
+    <CustomerCreate 
+        v-if="currentPage === 'customers-create'"
+        @back="currentPage = 'customers-list'"
+    />
     <CustomerList 
         v-if="currentPage === 'customers-list'"
         @edit="openEditCustomer"
       />    
+    <CustomerEdit
+      v-if="currentPage === 'customers-edit'"
+      :customer-id="selectedCustomerId"
+      @done="closeEditCustomer"
+      @cancel="closeEditCustomer"
+    />
       
     <OrderList v-if="currentPage === 'orders-list'" />
 
