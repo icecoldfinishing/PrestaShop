@@ -1,5 +1,6 @@
 import { computed, ref } from 'vue';
 import { RESOURCE_CONFIGS } from '../config/resources.mapping';
+import { RESET_MODULES, RESET_MODULE_IDS } from '../config/reset-modules.config';
 import type {
     CsvParseOptions,
     CsvParseResult,
@@ -15,6 +16,16 @@ import { CSVReaderService } from '../services/CSVReader.service';
 import { ImportBatchService } from '../services/ImportBatch.service';
 
 const reader = new CSVReaderService();
+
+/**
+ * Maps reset module IDs to their importable resource keys.
+ * This links the reset module config to the import resource config.
+ */
+const MODULE_RESOURCE_MAP: Record<string, string[]> = {
+    customers: ['customers'],
+    orders: ['orders'],
+    products: ['products', 'categories', 'brands', 'suppliers'],
+};
 
 const DEFAULT_SETTINGS: ImportSettings = {
     csvDelimiter: ';',
@@ -46,13 +57,51 @@ export function useCSVImport() {
     const report = ref<ImportReport | null>(null);
     const activeService = ref<ImportBatchService | null>(null);
 
+    /**
+     * Selected module IDs for module-aware import filtering.
+     * All modules are selected by default.
+     */
+    const selectedImportModules = ref<string[]>(
+        RESET_MODULE_IDS.filter((id) => RESET_MODULES[id]?.defaultChecked)
+    );
+
     const selectedFile = computed(() => files.value.find((file) => file.id === selectedFileId.value) || null);
+
+    /** All available resource options (unfiltered). */
     const resourceOptions = computed(() =>
         Object.entries(RESOURCE_CONFIGS).map(([key, config]) => ({
             key,
             label: config.label
         }))
     );
+
+    /**
+     * Resource options filtered by the currently selected modules.
+     * When modules are selected, only resources belonging to those modules are shown.
+     */
+    const moduleFilteredResourceOptions = computed(() => {
+        if (selectedImportModules.value.length === 0) {
+            return resourceOptions.value;
+        }
+
+        const allowedKeys = new Set<string>();
+        for (const modId of selectedImportModules.value) {
+            const keys = MODULE_RESOURCE_MAP[modId] || [];
+            keys.forEach((k) => allowedKeys.add(k));
+        }
+
+        return resourceOptions.value.filter((opt) => allowedKeys.has(opt.key));
+    });
+
+    /** Toggle a module for import filtering. */
+    const toggleImportModule = (moduleId: string) => {
+        const idx = selectedImportModules.value.indexOf(moduleId);
+        if (idx >= 0) {
+            selectedImportModules.value.splice(idx, 1);
+        } else {
+            selectedImportModules.value.push(moduleId);
+        }
+    };
 
     const addFiles = async (fileList: FileList | File[]) => {
         const incoming = Array.from(fileList);
@@ -382,6 +431,8 @@ export function useCSVImport() {
         progress,
         report,
         resourceOptions,
+        moduleFilteredResourceOptions,
+        selectedImportModules,
         addFiles,
         removeFile,
         selectFile,
@@ -397,7 +448,8 @@ export function useCSVImport() {
         cancelImport,
         retryErrors,
         exportReportJson,
-        exportReportCsv
+        exportReportCsv,
+        toggleImportModule
     };
 }
 

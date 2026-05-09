@@ -11,6 +11,7 @@ import CustomerCreate from "./components/customer/CustomerCreate.vue";
 import CustomerEdit from "./components/customer/CustomerEdit.vue";
 import OrderList from "./components/order/OrderList.vue";
 import CSVImportWizard from "./components/import/CSVImportWizard.vue";
+import DataResetManager from "./components/reset/DataResetManager.vue";
 
 import "bootstrap/dist/css/bootstrap.min.css";
 import "bootstrap/dist/js/bootstrap.bundle.min.js";
@@ -130,6 +131,10 @@ const closeEditCustomer = () => {
               @click.prevent="currentPage = 'csv-import'">
               CSV Import
             </a>
+            <a href="#" class="nav-link text-white mb-1" :class="{ 'active bg-primary': currentPage === 'data-reset' }"
+              @click.prevent="currentPage = 'data-reset'">
+              <i class="bi bi-arrow-counterclockwise me-1"></i>Data Reset
+            </a>
             <a href="#" class="nav-link text-white" :class="{ 'active bg-primary': currentPage === 'auth' }"
               @click.prevent="currentPage = 'auth'">
               Test Login
@@ -159,6 +164,7 @@ const closeEditCustomer = () => {
         <OrderList v-if="currentPage === 'orders-list'" />
         <ApiResponseViewer v-if="currentPage === 'api'" />
         <CSVImportWizard v-if="currentPage === 'csv-import'" />
+        <DataResetManager v-if="currentPage === 'data-reset'" />
         <auth v-if="currentPage === 'auth'" />
       </div>
     </div>

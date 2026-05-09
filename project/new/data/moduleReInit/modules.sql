@@ -1,0 +1,31 @@
+-- customer and order related tables
+ps_customer
+ps_address
+ps_connections
+ps_connections_page
+ps_connections_source
+ps_guest
+
+-- order related tables
+ps_orders
+ps_order_detail
+ps_order_history
+ps_order_invoice
+ps_order_invoice_payment
+ps_order_payment
+ps_order_return
+ps_order_return_detail
+ps_order_slip
+ps_order_slip_detail
+ps_cart
+ps_cart_product
+
+-- product related tables
+ps_product
+ps_product_lang
+ps_product_shop
+ps_stock_available
+ps_image
+ps_image_lang
+ps_image_shop
+ps_category_product

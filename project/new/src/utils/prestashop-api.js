@@ -106,3 +106,47 @@ export function getXmlText(value) {
   return String(value).trim();
 }
 
+/**
+ * Retrieve all IDs for a given API resource.
+ *
+ * Calls GET /api/{resource}?display=[id] and parses the XML response
+ * to extract an array of numeric IDs.
+ *
+ * @param {string} resource - The API resource name (e.g. 'customers', 'orders').
+ * @param {string} [singularTag] - Optional singular tag override.
+ *   If omitted the function tries resource minus trailing 's'.
+ * @returns {Promise<(string|number)[]>} Array of IDs.
+ */
+export async function psGetAllIds(resource, singularTag) {
+  try {
+    const data = await psGet(resource, '', {
+      display: '[id]',
+    });
+
+    const tag = singularTag || resource.replace(/s$/, '');
+    const resourceData = data?.prestashop?.[resource]?.[tag];
+
+    if (!resourceData) {
+      return [];
+    }
+
+    const items = Array.isArray(resourceData)
+      ? resourceData
+      : [resourceData];
+
+    return items
+      .map((item) => {
+        if (typeof item === 'object' && item !== null) {
+          return item['@_id'] ?? item.id ?? item;
+        }
+        return item;
+      })
+      .filter((id) => id !== undefined && id !== null);
+  } catch (error) {
+    if (error?.response?.status === 404) {
+      return [];
+    }
+    console.error(`Error fetching IDs for ${resource}:`, error);
+    return [];
+  }
+}
