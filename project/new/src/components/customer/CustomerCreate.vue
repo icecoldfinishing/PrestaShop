@@ -2,7 +2,7 @@
 import { ref } from 'vue';
 import { psPost } from '../../utils/prestashop-api';
 
-const emit = defineEmits(['back']);
+const emit = defineEmits(['cancel']);
 
 const customer = ref({
     firstname: '',
@@ -44,7 +44,7 @@ const createCustomer = async () => {
         
         alert("Client créé avec succès");
         resetForm();
-        emit('back');
+        emit('cancel');
 
     } catch (error: any) {
         console.error(error);
@@ -68,7 +68,7 @@ const resetForm = () => {
     <div class="container py-4">
         <div class="d-flex justify-content-between align-items-center mb-4">
             <h2>Créer un Nouveau Client</h2>
-            <button class="btn btn-secondary" @click="emit('back')">
+            <button class="btn btn-secondary" @click="emit('cancel')">
                 Retour à la liste
             </button>
         </div>
@@ -106,7 +106,7 @@ const resetForm = () => {
                     >
                         {{ saving ? 'Création en cours...' : 'Créer le Client' }}
                     </button>
-                    <button class="btn btn-secondary" @click="emit('back')">
+                    <button class="btn btn-secondary" @click="emit('cancel')">
                         Annuler
                     </button>
                 </div>

@@ -2,8 +2,8 @@ import axios from 'axios';
 import { XMLBuilder, XMLParser } from 'fast-xml-parser';
 
 
-const API_KEY = 'EWWCJGTGEU8ZQFT5YTGEGQNTZLMJG688';
-const BASE_URL = '/api';
+const API_KEY = import.meta.env.VITE_PRESTASHOP_API_KEY;
+const BASE_URL = import.meta.env.VITE_PRESTASHOP_BASE_URL || '/api';
 
 const parser = new XMLParser({
   ignoreAttributes: false,
@@ -68,6 +68,32 @@ export async function psDelete(resource, id = '', queryParams = {}) {
   });
 }
 
+export async function psCount(resource) {
+  try {
+    const data = await psGet(resource, '', {
+      display: '[id]'
+    });
+
+    const resourceData = data?.prestashop?.[resource]?.[
+      resource.slice(0, -1)
+    ];
+
+    if (!resourceData) {
+      return 0;
+    }
+
+    const items = Array.isArray(resourceData)
+      ? resourceData
+      : [resourceData];
+
+    return items.length;
+
+  } catch (error) {
+    console.error(`Error counting ${resource}:`, error);
+    return 0;
+  }
+}
+
 export function getXmlText(value) {
   if (value === null || value === undefined) {
     return '';
@@ -79,3 +105,4 @@ export function getXmlText(value) {
 
   return String(value).trim();
 }
+

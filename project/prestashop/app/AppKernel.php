@@ -269,7 +269,8 @@ class AppKernel extends Kernel
     protected function getContainerClearCacheLockPath(): string
     {
         $class = $this->getContainerClass();
-        $cacheDir = $this->getCacheDir();
+        $cacheDir = sys_get_temp_dir();
+        //$cacheDir = $this->getCacheDir();
 
         return sprintf('%s/%s.php.cache_clear.lock', $cacheDir, $class);
     }

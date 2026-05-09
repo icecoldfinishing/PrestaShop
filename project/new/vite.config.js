@@ -9,7 +9,6 @@ export default defineConfig({
       '/api': {
         target: 'http://localhost:8088',
         changeOrigin: true,
-        // On ne réécrit pas /api car PrestaShop en a besoin
       }
     }
   }

@@ -35,7 +35,12 @@ const getAllProducts = async () => {
 
         products.value = productsArray.map(p => {
             const nameObj = p.name?.language;
-            const name = Array.isArray(nameObj) ? nameObj[0] : nameObj;
+            let name = '';
+            if (Array.isArray(nameObj)) {
+                name = getXmlText(nameObj[0]);
+            } else {
+                name = getXmlText(nameObj);
+            }
 
             const id = Number(p.id);
             let imageId = null;
@@ -49,7 +54,7 @@ const getAllProducts = async () => {
 
             return {
                 id,
-                name: getXmlText(name || p.name),
+                name,
                 price: parseFloat(p.price || 0).toFixed(2),
                 reference: p.reference || '',
                 active: p.active === '1' || p.active === 1,
