@@ -8,6 +8,8 @@ export const RESOURCE_CONFIGS: ResourceConfigMap = {
         xmlItemTag: 'product',
         apiEndpoint: '/api/products',
         httpMethod: 'POST',
+        defaultLanguageId: 1,
+        languageFields: ['name'],
         mapping: {
             productName: 'name',
             reference: 'reference',

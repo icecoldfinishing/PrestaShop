@@ -29,23 +29,100 @@ function buildItem(row: CsvRow, resourceConfig: ResourceConfig): Record<string, 
   const listSeparator = resourceConfig.listSeparator || '|';
 
   Object.entries(resourceConfig.mapping).forEach(([header, path]) => {
+    const normalizedPath = normalizePath(path, resourceConfig.xmlItemTag);
     const rawValue = row[header];
     if (rawValue === undefined || rawValue === null || rawValue === '') {
       return;
     }
 
-    const values = splitListValues(String(rawValue), listSeparator, path);
-    if (values.length > 1 && pathHasArray(path)) {
+    if (shouldUseLanguageWrapper(normalizedPath, resourceConfig)) {
+      setLanguageValue(item, normalizedPath, String(rawValue), resourceConfig.defaultLanguageId);
+      return;
+    }
+
+    const values = splitListValues(String(rawValue), listSeparator, normalizedPath);
+    if (values.length > 1 && pathHasArray(normalizedPath)) {
       values.forEach((value) => {
-        setPathValue(item, path, value, true);
+        setPathValue(item, normalizedPath, value, true);
       });
       return;
     }
 
-    setPathValue(item, path, String(rawValue), false);
+    setPathValue(item, normalizedPath, String(rawValue), false);
   });
 
   return item;
+}
+
+function normalizePath(path: string, xmlItemTag: string): string {
+  const trimmed = path.trim().replace(/^\//, '');
+  const prefix = `${xmlItemTag}/`;
+  if (trimmed.startsWith(prefix)) {
+    return trimmed.slice(prefix.length);
+  }
+  return trimmed;
+}
+
+function shouldUseLanguageWrapper(path: string, config: ResourceConfig): boolean {
+  if (!config.languageFields || config.languageFields.length === 0) {
+    return false;
+  }
+
+  if (pathHasArray(path) || path.includes('@')) {
+    return false;
+  }
+
+  return config.languageFields.includes(path);
+}
+
+function setLanguageValue(
+  target: Record<string, unknown>,
+  path: string,
+  value: string,
+  languageId?: number
+): void {
+  const segments = parsePath(path);
+  let cursor: Record<string, unknown> = target;
+
+  for (let i = 0; i < segments.length; i += 1) {
+    const segment = segments[i];
+    const name = segment.name as string;
+
+    if (!name || segment.attrName || segment.isAttributeOnly) {
+      setPathValue(target, path, value, false);
+      return;
+    }
+
+    if (segment.isArray) {
+      setPathValue(target, path, value, false);
+      return;
+    }
+
+    if (!cursor[name]) {
+      cursor[name] = {};
+    }
+
+    if (i === segments.length - 1) {
+      const languageNode: Record<string, unknown> = {
+        '@_id': languageId ?? 1,
+        '#text': value
+      };
+
+      const current = cursor[name] as Record<string, unknown>;
+      if (current.language) {
+        if (Array.isArray(current.language)) {
+          current.language.push(languageNode);
+        } else {
+          current.language = [current.language, languageNode];
+        }
+      } else {
+        current.language = languageNode;
+      }
+      return;
+    }
+
+    cursor = cursor[name] as Record<string, unknown>;
+  }
 }
 
 function splitListValues(value: string, separator: string, path: string): string[] {

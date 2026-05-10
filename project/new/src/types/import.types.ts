@@ -33,6 +33,8 @@ export interface ResourceConfig {
   fieldTypes?: Record<string, FieldType>;
   listSeparator?: string;
   batchSize?: number;
+  languageFields?: string[];
+  defaultLanguageId?: number;
 }
 
 export type ResourceConfigMap = Record<string, ResourceConfig>;
