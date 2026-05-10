@@ -127,7 +127,7 @@ onMounted(() => {
                     <div class="card-body">
                         <h5 class="card-title text-truncate fw-semibold">{{ product.name }}</h5>
                         <p class="text-muted small mb-1">Ref: {{ product.reference || 'N/A' }}</p>
-                        <p class="text-primary fw-bold fs-5 mb-2">{{ product.price }} €</p>
+                        <p :style="{ color: product.price > 20 ? 'green' : 'red' }" class="text-primary fw-bold fs-5 mb-2">{{ product.price }} €</p>
                         
                         <span class="badge" :class="product.active ? 'bg-success' : 'bg-danger'">
                             {{ product.active ? 'Active' : 'Inactive' }}
