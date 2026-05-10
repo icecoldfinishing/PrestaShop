@@ -12,6 +12,7 @@ import CustomerEdit from "./components/customer/CustomerEdit.vue";
 import OrderList from "./components/order/OrderList.vue";
 import CSVImportWizard from "./components/import/CSVImportWizard.vue";
 import DataResetManager from "./components/reset/DataResetManager.vue";
+import { loggedCustomer, logout } from "./utils/auth-state";
 
 import "bootstrap/dist/css/bootstrap.min.css";
 import "bootstrap/dist/js/bootstrap.bundle.min.js";
@@ -47,6 +48,30 @@ const closeEditCustomer = () => {
     <div class="bg-dark text-white" style="width: 260px; overflow-y: auto;">
       <div class="p-3">
         <h4 class="text-center mb-4 text-light">PrestaShop Manager</h4>
+
+        <!-- AUTH SECTION -->
+        <div class="mb-4">
+          <div v-if="!loggedCustomer" class="px-2">
+            <button class="btn btn-primary w-100 d-flex align-items-center justify-content-center gap-2" 
+                    @click="currentPage = 'auth'">
+              <i class="bi bi-person-circle"></i>
+              Se connecter
+            </button>
+          </div>
+          <div v-else class="card bg-secondary bg-opacity-25 border-0 text-white">
+            <div class="card-body p-2 d-flex align-items-center gap-2">
+              <div class="bg-primary rounded-circle d-flex align-items-center justify-content-center" style="width: 32px; height: 32px; flex-shrink: 0;">
+                {{ loggedCustomer.firstname?.[0] }}{{ loggedCustomer.lastname?.[0] }}
+              </div>
+              <div class="flex-grow-1 overflow-hidden">
+                <div class="small fw-bold text-truncate">{{ loggedCustomer.firstname }} {{ loggedCustomer.lastname }}</div>
+                <button class="btn btn-link btn-sm p-0 text-danger text-decoration-none border-0" @click="logout" style="font-size: 0.75rem;">
+                  Déconnexion
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
 
         <div class="nav flex-column">
           <!-- Home -->
@@ -119,28 +144,6 @@ const closeEditCustomer = () => {
               </div>
             </div>
           </div>
-
-          <!-- ==================== UTILS ==================== -->
-          <div class="mt-3">
-            <div class="text-uppercase text-muted small px-3 mb-2 fw-bold">Utils</div>
-            <a href="#" class="nav-link text-white mb-1" :class="{ 'active bg-primary': currentPage === 'api' }"
-              @click.prevent="currentPage = 'api'">
-              API Response Viewer
-            </a>
-            <a href="#" class="nav-link text-white mb-1" :class="{ 'active bg-primary': currentPage === 'csv-import' }"
-              @click.prevent="currentPage = 'csv-import'">
-              CSV Import
-            </a>
-            <a href="#" class="nav-link text-white mb-1" :class="{ 'active bg-primary': currentPage === 'data-reset' }"
-              @click.prevent="currentPage = 'data-reset'">
-              <i class="bi bi-arrow-counterclockwise me-1"></i>Data Reset
-            </a>
-            <a href="#" class="nav-link text-white" :class="{ 'active bg-primary': currentPage === 'auth' }"
-              @click.prevent="currentPage = 'auth'">
-              Test Login
-            </a>
-          </div>
-
         </div>
       </div>
     </div>
@@ -149,7 +152,7 @@ const closeEditCustomer = () => {
     <div class="flex-grow-1 overflow-auto bg-light">
       <div class="p-4">
         <Home v-if="currentPage === 'home'" @navigate="page => currentPage = page" />
-        <ProductList v-if="currentPage === 'products-list'" @edit="openEditProduct" />
+        <ProductList v-if="currentPage === 'products-list'" @edit="openEditProduct" @require-login="currentPage = 'auth'" />
         <ProductCreate v-if="currentPage === 'products-create'" @done="currentPage = 'products-list'"
           @cancel="currentPage = 'products-list'" />
         <ProductEdit v-if="currentPage === 'products-edit'" :product-id="selectedProductId" @done="closeEditProduct"

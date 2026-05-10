@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
 import { getXmlText, psGet, psDelete } from '../../utils/prestashop-api';
+import { isLoggedIn } from '../../utils/auth-state';
 
 const products = ref<any[]>([]);
 const loading = ref(false);
@@ -8,6 +9,7 @@ const deletingId = ref<number | null>(null);
 
 const emit = defineEmits<{
     (e: 'edit', id: number): void;
+    (e: 'require-login'): void;
 }>();
 
 /**
@@ -89,6 +91,15 @@ const deleteProduct = async (id: number) => {
     }
 };
 
+const handleBuy = (product: any) => {
+    if (!isLoggedIn.value) {
+        alert('Vous devez être connecté pour acheter.');
+        emit('require-login');
+    } else {
+        alert(`Produit ${product.name} ajouté au panier (simulation).`);
+    }
+};
+
 onMounted(() => {
     getAllProducts();
 });
@@ -122,20 +133,28 @@ onMounted(() => {
                             {{ product.active ? 'Active' : 'Inactive' }}
                         </span>
 
-                        <div class="d-flex gap-2 mt-3">
+                        <div class="d-grid gap-2 mt-3">
                             <button 
-                                class="btn btn-sm btn-primary flex-fill"
-                                @click="editProduct(product.id)"
+                                class="btn btn-primary"
+                                @click="handleBuy(product)"
                             >
-                                Edit
+                                <i class="bi bi-cart-plus me-2"></i>Acheter
                             </button>
-                            <button 
-                                class="btn btn-sm btn-outline-danger flex-fill"
-                                :disabled="deletingId === product.id"
-                                @click="deleteProduct(product.id)"
-                            >
-                                {{ deletingId === product.id ? 'Suppression...' : 'Delete' }}
-                            </button>
+                            <div class="d-flex gap-2">
+                                <button 
+                                    class="btn btn-sm btn-outline-secondary flex-fill"
+                                    @click="editProduct(product.id)"
+                                >
+                                    Edit
+                                </button>
+                                <button 
+                                    class="btn btn-sm btn-outline-danger flex-fill"
+                                    :disabled="deletingId === product.id"
+                                    @click="deleteProduct(product.id)"
+                                >
+                                    {{ deletingId === product.id ? '...' : 'Delete' }}
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>

@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { XMLBuilder, XMLParser } from 'fast-xml-parser';
+import bcrypt from 'bcryptjs';
 
 
 const API_KEY = import.meta.env.VITE_PRESTASHOP_API_KEY;
@@ -148,5 +149,58 @@ export async function psGetAllIds(resource, singularTag) {
     }
     console.error(`Error fetching IDs for ${resource}:`, error);
     return [];
+  }
+}
+
+/**
+ * Authentifie un client par email et vérifie le mot de passe (hash).
+ * 
+ * @param {string} email 
+ * @param {string} password 
+ * @returns {Promise<Object>} Le client authentifié
+ * @throws {Error} Si l'authentification échoue
+ */
+export async function psLoginCustomer(email, password) {
+  if (!email || !password) {
+    throw new Error('Email et mot de passe requis.');
+  }
+
+  const data = await psGet('customers', '', {
+    'filter[email]': `[${email}]`,
+    display: 'full',
+  });
+
+  const customerData = data?.prestashop?.customers?.customer;
+  const customer = Array.isArray(customerData) ? customerData[0] : customerData;
+
+  if (!customer) {
+    throw new Error('Identifiants incorrects (Email non trouvé).');
+  }
+
+  const dbPasswd = getXmlText(customer.passwd);
+
+  // PrestaShop 1.7+ utilise bcrypt. On compare le texte brut avec le hash.
+  let isMatch = false;
+  try {
+    if (dbPasswd.startsWith('$2y$') || dbPasswd.startsWith('$2a$')) {
+      isMatch = bcrypt.compareSync(password, dbPasswd);
+    } else {
+      // Fallback pour les anciens hash ou texte brut (utile en dev)
+      isMatch = (password === dbPasswd);
+    }
+  } catch (error) {
+    console.error('Erreur lors de la vérification du mot de passe:', error);
+    isMatch = (password === dbPasswd);
+  }
+
+  if (isMatch) {
+    return {
+      id: customer.id,
+      email: getXmlText(customer.email),
+      firstname: getXmlText(customer.firstname),
+      lastname: getXmlText(customer.lastname),
+    };
+  } else {
+    throw new Error('Mot de passe incorrect.');
   }
 }
