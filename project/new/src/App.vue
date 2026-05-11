@@ -24,10 +24,10 @@ import "bootstrap/dist/css/bootstrap.min.css";
 import "bootstrap/dist/js/bootstrap.bundle.min.js";
 
 /* ================= MODE ================= */
-const mode = ref("BO");
+const mode = ref("FO");
 
 /* ================= PAGE STATE ================= */
-const currentPage = ref("auth");
+const currentPage = ref("product-list");
 
 const selectedProductId = ref(null);
 const selectedCustomerId = ref(null);
@@ -95,7 +95,6 @@ const switchMode = (newMode) => {
   }
 
   if (newMode === "BO") {
-    // 🔒 sécurité BO
     if (!isAdmin.value) {
       currentPage.value = "auth";
     } else {
