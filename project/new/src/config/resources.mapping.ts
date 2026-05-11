@@ -24,11 +24,19 @@ export const RESOURCE_CONFIGS: ResourceConfigMap = {
             productName: 'name',
             nom: 'name',
             reference: 'reference',
-            price: 'price',
+
+            // prix_ttc est converti en HT dans hydrateProductRow avant envoi
             prix_ttc: 'price',
+            price: 'price',
+
+            // prix_achat → wholesale_price (prix HT d'achat)
+            prix_achat: 'wholesale_price',
+
+            // Taxe → id_tax_rules_group (l'ID est résolu dans hydrateProductRow)
+            Taxe: 'id_tax_rules_group',
+
             active: 'active',
 
-            prix_achat: 'wholesale_price',
             date_availability_produit: 'available_date',
 
             description: 'description',
@@ -40,25 +48,29 @@ export const RESOURCE_CONFIGS: ResourceConfigMap = {
             visibility: 'visibility',
             state: 'state',
             minimalQuantity: 'minimal_quantity',
-            Taxe: 'id_tax_rules_group',
 
-            // ⚠️ IMPORTANT PRESTASHOP
+            // categorie → id_category_default (l'ID est résolu dans hydrateProductRow)
+            categorie: 'id_category_default',
             idCategoryDefault: 'id_category_default',
             idDefaultCategory: 'id_default_category',
-            categorie: 'id_category_default',
             categoryIds: 'associations/categories/category[]/@id'
         },
 
         requiredFields: [
-            'productName',
-            'price',
-            'idCategoryDefault'
+            'nom',
+            'prix_ttc',
+            'categorie'
         ],
 
         fieldTypes: {
-            price: 'number',
+            // prix_ttc sera converti TTC→HT dans hydrateProductRow.
+            // On le déclare 'number' pour que normalizeNumber() gère les virgules
+            // (ex: "12,5" → "12.5") AVANT l'hydratation.
             prix_ttc: 'number',
+
+            // prix_achat pareil : "8,5" → "8.5"
             prix_achat: 'number',
+
             active: 'boolean',
             idCategoryDefault: 'integer',
             date_availability_produit: 'date'

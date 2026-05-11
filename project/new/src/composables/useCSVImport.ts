@@ -47,8 +47,12 @@ const MODULE_RESOURCE_MAP: Record<string, string[]> = {
 };
 
 const DEFAULT_SETTINGS: ImportSettings = {
-    csvDelimiter: ';',
-    listSeparator: ';',
+    // Le fichier CSV utilise la virgule comme délimiteur de colonnes
+    // et la virgule comme séparateur décimal dans les valeurs numériques.
+    // On utilise donc ',' comme délimiteur CSV, et '.' comme décimal
+    // après normalisation par normalizeNumber().
+    csvDelimiter: ',',
+    listSeparator: '|',
     dateFormat: 'dd/mm/yyyy',
     decimalSeparator: ',',
     thousandSeparator: ' ',
@@ -366,6 +370,80 @@ export function useCSVImport() {
             percent: 0,
             status: 'running'
         };
+
+        if (file.resourceKey === 'products' || file.resourceKey === 'variants') {
+            const successes: ImportReport['successes'] = [];
+            const errors: ImportReport['errors'] = [];
+            const createdItems: Array<{ resource: string; id: string }> = [];
+
+            const updateProgress = (success: boolean) => {
+                progress.value.processed += 1;
+                if (success) {
+                    progress.value.success += 1;
+                } else {
+                    progress.value.failed += 1;
+                }
+                progress.value.percent =
+                    progress.value.total === 0
+                        ? 0
+                        : Math.round((progress.value.processed / progress.value.total) * 100);
+            };
+
+            const runtimeCaches = {
+                categoryByName: new Map<string, string>(),
+                taxGroupByRate: new Map<number, string>(),
+                taxGroupCreated: new Set<string>(),
+                productByReference: new Map<string, string>(),
+                attributeGroupByName: new Map<string, string>(),
+                attributeValueByKey: new Map<string, string>()
+            };
+
+            for (const row of rowsToImport) {
+                try {
+                    if (file.resourceKey === 'products') {
+                        await importProducts(
+                            [row],
+                            config,
+                            runtimeCaches,
+                            createdItems,
+                            successes,
+                            imageIndex.value,
+                            updateProgress
+                        );
+                    } else {
+                        await importVariants([row], runtimeCaches, createdItems, successes, updateProgress);
+                    }
+                    row.status = 'success';
+                    row.errors = [];
+                } catch (error) {
+                    const { message } = normalizeError(error);
+                    row.status = 'error';
+                    row.errors = [message || 'Import error'];
+                    errors.push({
+                        rowId: row.id,
+                        rowNumber: row.originalIndex,
+                        message: message || 'Import error'
+                    });
+                    updateProgress(false);
+                }
+            }
+
+            report.value = {
+                resourceKey: config.resourceName,
+                resourceName: config.resourceName,
+                total: rowsToImport.length,
+                success: progress.value.success,
+                failed: progress.value.failed,
+                errors,
+                successes,
+                startedAt: new Date().toISOString(),
+                finishedAt: new Date().toISOString(),
+                status: errors.length > 0 ? 'completed' : 'completed'
+            };
+
+            progress.value.status = 'completed';
+            return;
+        }
 
         const service = new ImportBatchService();
         activeService.value = service;
@@ -1122,24 +1200,50 @@ async function hydrateProductRow(
     },
     createdItems: Array<{ resource: string; id: string }>
 ): Promise<void> {
+    // ── 1. Résolution de la catégorie ──────────────────────────────────────
     const rawCategory = String(row.categorie || '').trim();
     if (rawCategory) {
         const categoryId = await ensureCategory(rawCategory, caches, DEFAULT_IDS.language, createdItems);
         row.categorie = categoryId;
     }
 
+    // ── 2. Résolution du taux de taxe → id_tax_rule_group ────────────────
+    // Le champ CSV "Taxe" contient une valeur comme "11,65%" ou "5,60%"
     const rawTax = String(row.Taxe || '').trim();
     const taxRate = rawTax ? parseTaxRate(rawTax) : null;
     if (taxRate !== null) {
         const taxGroupId = await ensureTaxRulesGroup(taxRate, caches, DEFAULT_IDS.language, createdItems);
+        // Remplace la valeur texte "11,65%" par l'ID du groupe de taxe créé
         row.Taxe = taxGroupId;
+    } else {
+        // Taxe non parseable → vider le champ pour éviter un envoi invalide
+        row.Taxe = '';
     }
 
-    const rawPriceTtc = row.prix_ttc ? String(row.prix_ttc) : '';
+    // ── 3. Conversion prix TTC → prix HT pour le champ "price" ───────────
+    // À ce stade, prix_ttc a déjà été normalisé par validateRow/normalizeNumber
+    // (virgule décimale remplacée par point, ex: "12,5" → "12.5").
+    const rawPriceTtc = row.prix_ttc ? String(row.prix_ttc).trim() : '';
     if (rawPriceTtc) {
         const priceHt = computePriceHt(rawPriceTtc, taxRate ?? 0);
         if (priceHt !== null) {
+            // On écrase avec le prix HT calculé.
+            // Le mapping prix_ttc → 'price' enverra cette valeur HT à PrestaShop.
             row.prix_ttc = priceHt;
+            row.price = priceHt;
+        }
+    }
+
+    // ── 4. Normalisation du prix d'achat (wholesale_price) ────────────────
+    // prix_achat peut contenir des virgules comme séparateur décimal (ex: "8,5").
+    // normalizeNumber() l'a déjà traité si fieldType 'number' est déclaré.
+    // On s'assure ici que la valeur finale est bien en notation point.
+    const rawPrixAchat = row.prix_achat ? String(row.prix_achat).trim() : '';
+    if (rawPrixAchat) {
+        const normalized = rawPrixAchat.replace(',', '.');
+        const parsed = Number(normalized);
+        if (!Number.isNaN(parsed)) {
+            row.prix_achat = parsed.toFixed(6);
         }
     }
 }
@@ -1206,7 +1310,15 @@ async function ensureCategory(
             }
         },
         id_parent: '2',
-        active: '1'
+        id_shop_default: String(DEFAULT_IDS.shop),
+        active: '1',
+        associations: {
+            shops: {
+                shop: {
+                    id: String(DEFAULT_IDS.shop)
+                }
+            }
+        }
     };
 
     const xml = buildResourceXml('category', payload);
@@ -1232,12 +1344,12 @@ async function ensureTaxRulesGroup(
     }
 
     const label = `Import ${rate}%`;
-    const data = (await psGet('tax_rules_groups', '', {
+    const data = (await psGet('tax_rule_groups', '', {
         'filter[name]': `[${label}]`,
         display: '[id]'
     })) as any;
 
-    const group = data?.prestashop?.tax_rules_groups?.tax_rules_group;
+    const group = data?.prestashop?.tax_rule_groups?.tax_rule_group;
     const found = Array.isArray(group) ? group[0] : group;
     const existingId = found?.['@_id'] || found?.id;
     if (existingId) {
@@ -1246,16 +1358,16 @@ async function ensureTaxRulesGroup(
         return id;
     }
 
-    const groupXml = buildResourceXml('tax_rules_group', {
+    const groupXml = buildResourceXml('tax_rule_group', {
         name: label,
         active: '1'
     });
-    const groupResponse = await psPost('tax_rules_groups', groupXml);
-    const groupId = extractResourceId(groupResponse, 'tax_rules_group');
+    const groupResponse = await psPost('tax_rule_groups', groupXml);
+    const groupId = extractResourceId(groupResponse, 'tax_rule_group');
     if (!groupId) {
         throw new Error(`Failed to create tax rules group for ${rate}%`);
     }
-    createdItems.push({ resource: 'tax_rules_groups', id: groupId });
+    createdItems.push({ resource: 'tax_rule_groups', id: groupId });
 
     const taxXml = buildResourceXml('tax', {
         name: {
@@ -1272,7 +1384,7 @@ async function ensureTaxRulesGroup(
     if (taxId) {
         createdItems.push({ resource: 'taxes', id: taxId });
         const ruleXml = buildResourceXml('tax_rule', {
-            id_tax_rules_group: groupId,
+            id_tax_rule_group: groupId,
             id_country: String(DEFAULT_IDS.country),
             id_state: '0',
             id_tax: taxId,
@@ -1562,7 +1674,9 @@ function extractResponseId(xmlText: string, config: ResourceConfig): string | un
 
 function normalizeError(error: unknown): { message: string } {
     if (axios.isAxiosError(error)) {
-        return { message: error.message || 'Import error' };
+        const responseText = typeof error.response?.data === 'string' ? error.response.data : '';
+        const detail = extractPrestaShopError(responseText);
+        return { message: detail || error.message || 'Import error' };
     }
 
     if (error instanceof Error) {
@@ -1570,6 +1684,28 @@ function normalizeError(error: unknown): { message: string } {
     }
 
     return { message: 'Import error' };
+}
+
+function extractPrestaShopError(xmlText: string): string | null {
+    if (!xmlText) {
+        return null;
+    }
+
+    try {
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(xmlText, 'application/xml');
+        const errorNodes = Array.from(doc.querySelectorAll('prestashop > errors > error'));
+        if (errorNodes.length === 0) {
+            return null;
+        }
+        const messages = errorNodes
+            .map((node) => node.querySelector('message')?.textContent || node.textContent || '')
+            .map((text) => text.trim())
+            .filter(Boolean);
+        return messages.length > 0 ? messages.join('; ') : null;
+    } catch {
+        return null;
+    }
 }
 
 
