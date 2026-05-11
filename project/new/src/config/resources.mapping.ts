@@ -20,7 +20,6 @@ export const RESOURCE_CONFIGS: ResourceConfigMap = {
             'meta_title'
         ],
 
-        /* ================= MAPPING ================= */
         mapping: {
             productName: 'name',
             reference: 'reference',
@@ -43,27 +42,22 @@ export const RESOURCE_CONFIGS: ResourceConfigMap = {
             categoryIds: 'associations/categories/category[]/@id'
         },
 
-        /* ================= REQUIRED ================= */
         requiredFields: [
             'productName',
             'price',
             'idCategoryDefault'
         ],
 
-        /* ================= TYPES ================= */
         fieldTypes: {
             price: 'number',
             active: 'boolean',
             idCategoryDefault: 'integer'
         },
 
-        /* ================= DEFAULT VALUES (CRUCIAL BO VISIBILITY) ================= */
         defaultValues: {
             active: '1',
 
             price: '0',
-
-            // ⚠️ obligatoire sinon produit invisible
             idCategoryDefault: '2',
             idDefaultCategory: '2',
 
