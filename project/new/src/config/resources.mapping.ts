@@ -25,8 +25,11 @@ export const RESOURCE_CONFIGS: ResourceConfigMap = {
             nom: 'name',
             reference: 'reference',
 
-            // prix_ttc est converti en HT dans hydrateProductRow avant envoi
+            // prix_ttc est converti TTC -> HT dans hydrateProductRow.
+            // On envoie ce HT vers le champ price.
             prix_ttc: 'price',
+
+            // Optionnel si une colonne price existe.
             price: 'price',
 
             // prix_achat → wholesale_price (prix HT d'achat)

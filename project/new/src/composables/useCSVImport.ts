@@ -1190,7 +1190,6 @@ async function importVariants(
         updateProgress(true);
     }
 }
-
 async function hydrateProductRow(
     row: CsvRow,
     caches: {
@@ -1200,52 +1199,126 @@ async function hydrateProductRow(
     },
     createdItems: Array<{ resource: string; id: string }>
 ): Promise<void> {
-    // ── 1. Résolution de la catégorie ──────────────────────────────────────
+
+    /* =========================================================
+       1. CATEGORY
+    ========================================================= */
+
     const rawCategory = String(row.categorie || '').trim();
+
     if (rawCategory) {
-        const categoryId = await ensureCategory(rawCategory, caches, DEFAULT_IDS.language, createdItems);
+        const categoryId = await ensureCategory(
+            rawCategory,
+            caches,
+            DEFAULT_IDS.language,
+            createdItems
+        );
+
         row.categorie = categoryId;
+        row.id_category_default = categoryId;
     }
 
-    // ── 2. Résolution du taux de taxe → id_tax_rule_group ────────────────
-    // Le champ CSV "Taxe" contient une valeur comme "11,65%" ou "5,60%"
+    /* =========================================================
+       2. TAX
+    ========================================================= */
+
     const rawTax = String(row.Taxe || '').trim();
-    const taxRate = rawTax ? parseTaxRate(rawTax) : null;
+
+    const taxRate = rawTax
+        ? parseTaxRate(rawTax)
+        : null;
+
     if (taxRate !== null) {
-        const taxGroupId = await ensureTaxRulesGroup(taxRate, caches, DEFAULT_IDS.language, createdItems);
-        // Remplace la valeur texte "11,65%" par l'ID du groupe de taxe créé
+
+        const taxGroupId = await ensureTaxRulesGroup(
+            taxRate,
+            caches,
+            DEFAULT_IDS.language,
+            createdItems
+        );
+
         row.Taxe = taxGroupId;
+
+        row.id_tax_rules_group = taxGroupId;
+
     } else {
-        // Taxe non parseable → vider le champ pour éviter un envoi invalide
+
         row.Taxe = '';
+        row.id_tax_rules_group = '';
     }
 
-    // ── 3. Conversion prix TTC → prix HT pour le champ "price" ───────────
-    // À ce stade, prix_ttc a déjà été normalisé par validateRow/normalizeNumber
-    // (virgule décimale remplacée par point, ex: "12,5" → "12.5").
-    const rawPriceTtc = row.prix_ttc ? String(row.prix_ttc).trim() : '';
+    /* =========================================================
+       3. TTC -> HT
+    ========================================================= */
+
+    const rawPriceTtc = row.prix_ttc
+        ? String(row.prix_ttc).trim()
+        : '';
+
     if (rawPriceTtc) {
-        const priceHt = computePriceHt(rawPriceTtc, taxRate ?? 0);
-        if (priceHt !== null) {
-            // On écrase avec le prix HT calculé.
-            // Le mapping prix_ttc → 'price' enverra cette valeur HT à PrestaShop.
-            row.prix_ttc = priceHt;
-            row.price = priceHt;
+        const normalizedTtc = rawPriceTtc.replace(',', '.');
+        const parsedTtc = Number(normalizedTtc);
+
+        if (!Number.isNaN(parsedTtc)) {
+            if (!row.prix_ttc_original) {
+                row.prix_ttc_original = rawPriceTtc;
+            }
+
+            let priceHt = parsedTtc;
+
+            if (taxRate && taxRate > 0) {
+                priceHt = parsedTtc / (1 + (taxRate / 100));
+            }
+
+            const htValue = priceHt.toFixed(6);
+            row.price = htValue;
+            row.prix_ttc = htValue;
         }
     }
 
-    // ── 4. Normalisation du prix d'achat (wholesale_price) ────────────────
-    // prix_achat peut contenir des virgules comme séparateur décimal (ex: "8,5").
-    // normalizeNumber() l'a déjà traité si fieldType 'number' est déclaré.
-    // On s'assure ici que la valeur finale est bien en notation point.
-    const rawPrixAchat = row.prix_achat ? String(row.prix_achat).trim() : '';
+    /* =========================================================
+       4. WHOLESALE PRICE
+    ========================================================= */
+
+    const rawPrixAchat = row.prix_achat
+        ? String(row.prix_achat).trim()
+        : '';
+
     if (rawPrixAchat) {
+
         const normalized = rawPrixAchat.replace(',', '.');
+
         const parsed = Number(normalized);
+
         if (!Number.isNaN(parsed)) {
+
             row.prix_achat = parsed.toFixed(6);
+
+            row.wholesale_price = parsed.toFixed(6);
         }
     }
+
+    /* =========================================================
+       5. DEFAULTS
+    ========================================================= */
+
+    row.active = row.active || '1';
+
+    row.visibility = 'both';
+
+    row.available_for_order = '1';
+
+    row.show_price = '1';
+
+    row.state = '1';
+
+    row.condition = 'new';
+
+    row.minimal_quantity = '1';
+
+    row.id_shop_default = '1';
+
+    row.redirect_type = '404';
 }
 
 function parseTaxRate(value: string): number | null {
@@ -1340,6 +1413,7 @@ async function ensureTaxRulesGroup(
 ): Promise<string> {
     const cached = caches.taxGroupByRate.get(rate);
     if (cached) {
+        await ensureTaxRuleForGroup(cached, rate, languageId, createdItems);
         return cached;
     }
 
@@ -1355,6 +1429,7 @@ async function ensureTaxRulesGroup(
     if (existingId) {
         const id = String(existingId);
         caches.taxGroupByRate.set(rate, id);
+        await ensureTaxRuleForGroup(id, rate, languageId, createdItems);
         return id;
     }
 
@@ -1369,38 +1444,75 @@ async function ensureTaxRulesGroup(
     }
     createdItems.push({ resource: 'tax_rule_groups', id: groupId });
 
-    const taxXml = buildResourceXml('tax', {
-        name: {
-            language: {
-                '@_id': languageId,
-                '#text': `Tax ${rate}%`
-            }
-        },
-        rate: String(rate),
-        active: '1'
-    });
-    const taxResponse = await psPost('taxes', taxXml);
-    const taxId = extractResourceId(taxResponse, 'tax');
-    if (taxId) {
-        createdItems.push({ resource: 'taxes', id: taxId });
-        const ruleXml = buildResourceXml('tax_rule', {
-            id_tax_rule_group: groupId,
-            id_country: String(DEFAULT_IDS.country),
-            id_state: '0',
-            id_tax: taxId,
-            behavior: '0',
-            description: label
-        });
-        const ruleResponse = await psPost('tax_rules', ruleXml);
-        const ruleId = extractResourceId(ruleResponse, 'tax_rule');
-        if (ruleId) {
-            createdItems.push({ resource: 'tax_rules', id: ruleId });
-        }
-    }
-
+    await ensureTaxRuleForGroup(groupId, rate, languageId, createdItems);
     caches.taxGroupByRate.set(rate, groupId);
     caches.taxGroupCreated.add(groupId);
     return groupId;
+}
+
+async function ensureTaxRuleForGroup(
+    groupId: string,
+    rate: number,
+    languageId: number,
+    createdItems: Array<{ resource: string; id: string }>
+): Promise<void> {
+    const rules = (await psGet('tax_rules', '', {
+        'filter[id_tax_rules_group]': `[${groupId}]`,
+        display: '[id]'
+    })) as any;
+
+    const rule = rules?.prestashop?.tax_rules?.tax_rule;
+    const foundRule = Array.isArray(rule) ? rule[0] : rule;
+    if (foundRule?.['@_id'] || foundRule?.id) {
+        return;
+    }
+
+    const taxLabel = `Tax ${rate}%`;
+    const existingTax = (await psGet('taxes', '', {
+        'filter[name]': `[${taxLabel}]`,
+        display: '[id]'
+    })) as any;
+    const tax = existingTax?.prestashop?.taxes?.tax;
+    const foundTax = Array.isArray(tax) ? tax[0] : tax;
+    let taxId = foundTax?.['@_id'] || foundTax?.id;
+
+    if (!taxId) {
+        const taxXml = buildResourceXml('tax', {
+            name: {
+                language: {
+                    '@_id': languageId,
+                    '#text': taxLabel
+                }
+            },
+            rate: String(rate),
+            active: '1'
+        });
+        const taxResponse = await psPost('taxes', taxXml);
+        taxId = extractResourceId(taxResponse, 'tax');
+        if (taxId) {
+            createdItems.push({ resource: 'taxes', id: taxId });
+        }
+    }
+
+    if (!taxId) {
+        return;
+    }
+
+    const ruleXml = buildResourceXml('tax_rule', {
+        id_tax_rules_group: groupId,
+        id_country: String(DEFAULT_IDS.country),
+        id_state: '0',
+        zipcode_from: '0',
+        zipcode_to: '0',
+        behavior: '0',
+        id_tax: String(taxId),
+        description: `Import ${rate}%`
+    });
+    const ruleResponse = await psPost('tax_rules', ruleXml);
+    const ruleId = extractResourceId(ruleResponse, 'tax_rule');
+    if (ruleId) {
+        createdItems.push({ resource: 'tax_rules', id: ruleId });
+    }
 }
 
 async function resolveProductId(reference: string, caches: { productByReference: Map<string, string> }): Promise<string> {
