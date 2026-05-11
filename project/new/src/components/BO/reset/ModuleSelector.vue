@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import type { ResetModuleState } from '../../types/reset.types';
-import { getAllTablesForModule } from '../../config/reset-modules.config';
+import type { ResetModuleState } from '../../../types/reset.types';
+import { getAllTablesForModule } from '../../../config/reset-modules.config';
 import { ref } from 'vue';
 
 defineProps<{

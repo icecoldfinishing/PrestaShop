@@ -6,7 +6,7 @@ import PreviewTable from './PreviewTable.vue';
 import ImportProgress from './ImportProgress.vue';
 import ImportReport from './ImportReport.vue';
 import ImportSettingsPanel from './ImportSettingsPanel.vue';
-import { useCSVImport } from '../../composables/useCSVImport';
+import { useCSVImport } from '../../../composables/useCSVImport';
 
 const {
     files,

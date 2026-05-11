@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue';
-import { getXmlText, psGet, psPut } from '../../utils/prestashop-api';
+import { getXmlText, psGet, psPut } from '../../../utils/prestashop-api';
 
 const props = defineProps<{ customerId: number | null }>();
 const emit = defineEmits<{ (e: 'done'): void; (e: 'cancel'): void }>();

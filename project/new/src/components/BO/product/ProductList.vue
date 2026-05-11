@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
-import { getXmlText, psGet, psDelete } from '../../utils/prestashop-api';
-import { isLoggedIn } from '../../utils/auth-state';
+import { getXmlText, psGet, psDelete } from '../../../utils/prestashop-api';
+import { isLoggedIn } from '../../../utils/auth-state';
 
 const products = ref<any[]>([]);
 const loading = ref(false);
@@ -91,14 +91,6 @@ const deleteProduct = async (id: number) => {
     }
 };
 
-const handleBuy = (product: any) => {
-    if (!isLoggedIn.value) {
-        alert('Vous devez être connecté pour acheter.');
-        emit('require-login');
-    } else {
-        alert(`Produit ${product.name} ajouté au panier (simulation).`);
-    }
-};
 
 onMounted(() => {
     getAllProducts();
@@ -134,12 +126,6 @@ onMounted(() => {
                         </span>
 
                         <div class="d-grid gap-2 mt-3">
-                            <button 
-                                class="btn btn-primary"
-                                @click="handleBuy(product)"
-                            >
-                                <i class="bi bi-cart-plus me-2"></i>Acheter
-                            </button>
                             <div class="d-flex gap-2">
                                 <button 
                                     class="btn btn-sm btn-outline-secondary flex-fill"

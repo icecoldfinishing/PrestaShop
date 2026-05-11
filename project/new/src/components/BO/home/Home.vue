@@ -1,6 +1,6 @@
 <script setup>
 import { ref, onMounted } from 'vue';
-import { psCount } from '../../utils/prestashop-api';
+import { psCount } from '../../../utils/prestashop-api';
 
 const emit = defineEmits(['navigate']);
 

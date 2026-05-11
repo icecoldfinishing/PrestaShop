@@ -74,8 +74,8 @@
 
 <script setup>
 import { ref } from 'vue';
-import { psLoginCustomer } from '../../utils/prestashop-api';
-import { setLoggedCustomer } from '../../utils/auth-state';
+import { psLoginCustomer } from '../../../utils/prestashop-api';
+import { setLoggedCustomer } from '../../../utils/auth-state';
 
 const credentials = ref({
   email: '',

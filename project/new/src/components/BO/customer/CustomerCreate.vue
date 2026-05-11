@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue';
-import { psPost } from '../../utils/prestashop-api';
+import { psPost } from '../../../utils/prestashop-api';
 
 const emit = defineEmits(['cancel']);
 

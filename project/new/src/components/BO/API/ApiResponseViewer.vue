@@ -35,7 +35,7 @@
 
 <script setup>
 import { ref } from 'vue';
-import { psGet } from '../../utils/prestashop-api';
+import { psGet } from '../../../utils/prestashop-api';
 
 const resource = ref('customers');
 const resourceId = ref('');

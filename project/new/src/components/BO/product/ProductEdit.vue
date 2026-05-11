@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue';
-import { getXmlText, psGet, psPut } from '../../utils/prestashop-api';
+import { getXmlText, psGet, psPut } from '../../../utils/prestashop-api';
 
 const props = defineProps<{
     productId: number | null

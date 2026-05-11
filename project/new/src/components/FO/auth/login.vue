@@ -1,7 +1,7 @@
 <script setup>
 import { ref } from "vue";
-import { setLoggedAdmin } from "../../utils/auth-state";
-import { psLoginAdmin } from "../../utils/prestashop-api";
+import { setLoggedAdmin } from "../../../utils/auth-state";
+import { psLoginAdmin } from "../../../utils/prestashop-api";
 
 const emit = defineEmits(["success"]);
 

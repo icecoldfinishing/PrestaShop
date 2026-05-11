@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
-import { getXmlText, psDelete, psGet } from '../../utils/prestashop-api';
+import { getXmlText, psDelete, psGet } from '../../../utils/prestashop-api';
 
 const emit = defineEmits<{ (e: 'edit', id: number): void }>();
 

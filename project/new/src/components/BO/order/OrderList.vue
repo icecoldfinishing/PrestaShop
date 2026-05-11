@@ -1,6 +1,6 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue';
-import { getXmlText, psGet, psUpdateOrderState } from '../../utils/prestashop-api';
+import { getXmlText, psGet, psUpdateOrderState } from '../../../utils/prestashop-api';
 
 const orders = ref([]);
 const orderStates = ref([]);

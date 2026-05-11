@@ -3,7 +3,7 @@ import { ref } from 'vue';
 import ModuleSelector from './ModuleSelector.vue';
 import ResetProgress from './ResetProgress.vue';
 import ResetReport from './ResetReport.vue';
-import { useDataReset } from '../../composables/useDataReset';
+import { useDataReset } from '../../../composables/useDataReset';
 
 const {
   modules,
