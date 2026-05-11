@@ -17,6 +17,7 @@ const {
     report,
     resourceOptions,
     addFiles,
+    addImages,
     removeFile,
     selectFile,
     setFileResource,
@@ -26,6 +27,7 @@ const {
     removeRow,
     updateSettings,
     startImport,
+    startImportAll,
     pauseImport,
     resumeImport,
     cancelImport,
@@ -57,6 +59,10 @@ const canImport = computed(() => {
     );
     return selectedSummary.value.selected > 0 && hasMapping;
 });
+
+const canImportAll = computed(() => {
+    return files.value.length > 0 && files.value.every(f => f.resourceKey && Object.keys(f.settings.mapping || {}).length > 0);
+});
 </script>
 
 <template>
@@ -66,9 +72,15 @@ const canImport = computed(() => {
                 <h2 class="fw-bold mb-1">CSV Import</h2>
                 <p class="text-muted mb-0">Import CSV files and push them to PrestaShop API</p>
             </div>
+            <div>
+                <button class="btn btn-warning fw-bold" :disabled="!canImportAll" @click="startImportAll">
+                    <i class="bi bi-cloud-arrow-up"></i>
+                    Tout Importer (All or Nothing)
+                </button>
+            </div>
         </div>
 
-        <UploadZone @files-added="addFiles" />
+        <UploadZone @files-added="addFiles" @images-added="addImages" />
 
         <FileListManager class="mt-3" :files="files" :resource-options="resourceOptions"
             :active-file-id="selectedFileId" @preview="selectFile" @remove="removeFile"
