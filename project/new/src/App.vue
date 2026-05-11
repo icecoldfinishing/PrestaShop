@@ -24,10 +24,10 @@ import "bootstrap/dist/css/bootstrap.min.css";
 import "bootstrap/dist/js/bootstrap.bundle.min.js";
 
 /* ================= MODE ================= */
-const mode = ref("FO");
+const mode = ref("BO");
 
 /* ================= PAGE STATE ================= */
-const currentPage = ref("products-list");
+const currentPage = ref("auth");
 
 const selectedProductId = ref(null);
 const selectedCustomerId = ref(null);
@@ -113,13 +113,11 @@ const switchMode = (newMode) => {
       <span class="navbar-brand fw-bold">Shop</span>
 
       <div class="d-flex gap-2">
-        <button class="btn btn-outline-light btn-sm"
-                @click="currentPage = 'products-list'">
+        <button class="btn btn-outline-light btn-sm" @click="currentPage = 'products-list'">
           Produits
         </button>
 
-        <button class="btn btn-outline-light btn-sm"
-                @click="switchMode('BO')">
+        <button class="btn btn-outline-light btn-sm" @click="switchMode('BO')">
           Admin
         </button>
       </div>
@@ -128,64 +126,87 @@ const switchMode = (newMode) => {
     <div class="d-flex flex-grow-1">
 
       <!-- ================= BO SIDEBAR ================= -->
-      <div v-if="mode === 'BO'" class="bg-dark text-white" style="width: 260px;">
+      <div v-if="mode === 'BO'" class="bg-dark text-white d-flex flex-column h-100" style="width: 260px;">
 
-        <div class="p-3">
-          <h4 class="text-center mb-3">Admin Panel</h4>
+        <!-- HEADER -->
+        <div class="p-3 border-bottom border-secondary">
+          <h5 class="text-center mb-3">Admin Panel</h5>
 
-          <!-- MODE SWITCH -->
-          <button class="btn btn-sm btn-outline-light w-100 mb-3"
-                  @click="switchMode('FO')">
-            Retour FO
+          <!-- RETURN FO -->
+          <button class="btn btn-sm btn-outline-light w-100 d-flex align-items-center justify-content-center gap-2"
+            @click="switchMode('FO')">
+            <i class="bi bi-arrow-left-circle"></i>
+            Retour boutique
           </button>
+        </div>
 
-          <!-- AUTH -->
-          <div class="mb-3">
-            <div v-if="!isAdmin">
-              <button class="btn btn-primary w-100"
-                      @click="currentPage = 'auth'">
-                Login Admin
-              </button>
-            </div>
-
-            <div v-else class="text-center">
-              <div class="fw-bold mb-1">Admin connecté</div>
-              <button class="btn btn-sm btn-danger"
-                      @click="handleAdminLogout">
-                Logout
-              </button>
-            </div>
+        <!-- AUTH INFO -->
+        <div class="p-3 border-bottom border-secondary">
+          <div v-if="!isAdmin">
+            <button class="btn btn-primary w-100" @click="currentPage = 'auth'">
+              <i class="bi bi-shield-lock me-1"></i>
+              Login Admin
+            </button>
           </div>
 
-          <!-- NAV -->
-          <div v-if="isAdmin" class="nav flex-column">
+          <div v-else class="d-flex align-items-center justify-content-between">
+            <div class="d-flex align-items-center gap-2 overflow-hidden">
+              <div class="bg-primary rounded-circle d-flex align-items-center justify-content-center"
+                style="width: 34px; height: 34px; flex-shrink: 0;">
+                <i class="bi bi-person text-white"></i>
+              </div>
 
-            <a class="nav-link text-white"
-               :class="{ 'active bg-primary': currentPage === 'home' }"
-               @click="currentPage = 'home'">
+              <div class="text-truncate">
+                <div class="small fw-bold text-truncate">
+                  {{ loggedAdmin.email }}
+                </div>
+              </div>
+            </div>
+
+            <button class="btn btn-sm btn-outline-danger" @click="handleAdminLogout">
+              <i class="bi bi-box-arrow-right"></i>
+            </button>
+          </div>
+        </div>
+
+        <!-- NAVIGATION -->
+        <div v-if="isAdmin" class="flex-grow-1 overflow-auto p-2">
+
+          <div class="nav flex-column gap-1">
+
+            <a class="nav-link text-white d-flex align-items-center gap-2"
+              :class="{ 'active bg-primary': currentPage === 'home' }" @click="currentPage = 'home'">
+              <i class="bi bi-house"></i>
               Home
             </a>
 
-            <a class="nav-link text-white"
-               :class="{ 'active bg-primary': currentPage === 'products-list' }"
-               @click="currentPage = 'products-list'">
+            <a class="nav-link text-white d-flex align-items-center gap-2"
+              :class="{ 'active bg-primary': currentPage === 'products-list' }" @click="currentPage = 'products-list'">
+              <i class="bi bi-box"></i>
               Products
             </a>
 
-            <a class="nav-link text-white"
-               :class="{ 'active bg-primary': currentPage === 'customers-list' }"
-               @click="currentPage = 'customers-list'">
+            <a class="nav-link text-white d-flex align-items-center gap-2"
+              :class="{ 'active bg-primary': currentPage === 'customers-list' }"
+              @click="currentPage = 'customers-list'">
+              <i class="bi bi-people"></i>
               Customers
             </a>
 
-            <a class="nav-link text-white"
-               :class="{ 'active bg-primary': currentPage === 'orders-list' }"
-               @click="currentPage = 'orders-list'">
+            <a class="nav-link text-white d-flex align-items-center gap-2"
+              :class="{ 'active bg-primary': currentPage === 'orders-list' }" @click="currentPage = 'orders-list'">
+              <i class="bi bi-receipt"></i>
               Orders
             </a>
 
           </div>
         </div>
+
+        <!-- FOOTER ACTIONS -->
+        <div v-if="isAdmin" class="p-2 border-top border-secondary small text-center text-muted">
+          v1.0 Admin Panel
+        </div>
+
       </div>
 
       <!-- ================= MAIN ================= -->
@@ -193,27 +214,21 @@ const switchMode = (newMode) => {
 
         <!-- FO / BO CONTENT -->
 
-        <ProductList v-if="currentPage === 'products-list'"
-               @edit="openEditProduct"
-               @require-login="openFoLogin" />
+        <ProductList v-if="currentPage === 'products-list'" @edit="openEditProduct" @require-login="openFoLogin" />
 
         <ProductCreate v-if="mode === 'BO' && currentPage === 'products-create'"
-                       @done="currentPage = 'products-list'" />
+          @done="currentPage = 'products-list'" />
 
-        <ProductEdit v-if="mode === 'BO' && currentPage === 'products-edit'"
-                     :product-id="selectedProductId"
-                     @done="closeEditProduct"
-                     @cancel="closeEditProduct" />
+        <ProductEdit v-if="mode === 'BO' && currentPage === 'products-edit'" :product-id="selectedProductId"
+          @done="closeEditProduct" @cancel="closeEditProduct" />
 
-        <CustomerList v-if="mode === 'BO' && currentPage === 'customers-list'"
-                      @edit="openEditCustomer" />
+        <CustomerList v-if="mode === 'BO' && currentPage === 'customers-list'" @edit="openEditCustomer" />
 
         <CustomerCreate v-if="mode === 'BO' && currentPage === 'customers-create'"
-                        @done="currentPage = 'customers-list'" />
+          @done="currentPage = 'customers-list'" />
 
-        <CustomerEdit v-if="mode === 'BO' && currentPage === 'customers-edit'"
-                      :customer-id="selectedCustomerId"
-                      @done="closeEditCustomer" />
+        <CustomerEdit v-if="mode === 'BO' && currentPage === 'customers-edit'" :customer-id="selectedCustomerId"
+          @done="closeEditCustomer" />
 
         <OrderList v-if="mode === 'BO' && currentPage === 'orders-list'" />
 
@@ -241,7 +256,7 @@ const switchMode = (newMode) => {
 }
 
 .nav-link:hover {
-  background: rgba(255,255,255,0.1);
+  background: rgba(255, 255, 255, 0.1);
 }
 
 .nav-link.active {
