@@ -8,20 +8,79 @@ export const RESOURCE_CONFIGS: ResourceConfigMap = {
         xmlItemTag: 'product',
         apiEndpoint: '/api/products',
         httpMethod: 'POST',
+
         defaultLanguageId: 1,
-        languageFields: ['name'],
+
+        // champs traduisibles
+        languageFields: [
+            'name',
+            'description',
+            'description_short',
+            'link_rewrite',
+            'meta_title'
+        ],
+
+        /* ================= MAPPING ================= */
         mapping: {
             productName: 'name',
             reference: 'reference',
             price: 'price',
             active: 'active',
+
+            description: 'description',
+            shortDescription: 'description_short',
+
+            linkRewrite: 'link_rewrite',
+            metaTitle: 'meta_title',
+
+            visibility: 'visibility',
+            state: 'state',
+            minimalQuantity: 'minimal_quantity',
+
+            // ⚠️ IMPORTANT PRESTASHOP
+            idCategoryDefault: 'id_category_default',
+            idDefaultCategory: 'id_default_category',
             categoryIds: 'associations/categories/category[]/@id'
         },
-        requiredFields: ['productName', 'price'],
+
+        /* ================= REQUIRED ================= */
+        requiredFields: [
+            'productName',
+            'price',
+            'idCategoryDefault'
+        ],
+
+        /* ================= TYPES ================= */
         fieldTypes: {
             price: 'number',
-            active: 'boolean'
+            active: 'boolean',
+            idCategoryDefault: 'integer'
         },
+
+        /* ================= DEFAULT VALUES (CRUCIAL BO VISIBILITY) ================= */
+        defaultValues: {
+            active: '1',
+
+            price: '0',
+
+            // ⚠️ obligatoire sinon produit invisible
+            idCategoryDefault: '2',
+            idDefaultCategory: '2',
+
+            state: '1',
+            minimalQuantity: '1',
+
+            quantity: '1',
+
+            visibility: 'both',
+
+            linkRewrite: 'product',
+            metaTitle: 'Imported product',
+
+            description: 'Imported product',
+            shortDescription: 'Imported product'
+        },
+
         listSeparator: '|',
         batchSize: 20
     },

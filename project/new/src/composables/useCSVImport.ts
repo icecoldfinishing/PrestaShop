@@ -775,12 +775,29 @@ function syncSettingsWithHeaders(file: ImportFile, config?: ResourceConfig, forc
     });
     file.settings.fieldTypes = nextTypes;
 
-    const nextDefaults: Record<string, string> = {};
+    const nextDefaults: Record<string, string> = forceDefaults
+        ? {}
+        : { ...file.settings.defaultValues };
+
     headers.forEach((header) => {
         if (file.settings.defaultValues[header] !== undefined) {
             nextDefaults[header] = file.settings.defaultValues[header];
+            return;
+        }
+
+        if (config?.defaultValues?.[header] !== undefined) {
+            nextDefaults[header] = config.defaultValues[header] as string;
         }
     });
+
+    if (config?.defaultValues) {
+        Object.entries(config.defaultValues).forEach(([key, value]) => {
+            if (nextDefaults[key] === undefined) {
+                nextDefaults[key] = value as string;
+            }
+        });
+    }
+
     file.settings.defaultValues = nextDefaults;
 
 }
@@ -793,6 +810,13 @@ function buildResourceConfig(file: ImportFile): ResourceConfig | null {
     const base = RESOURCE_CONFIGS[file.resourceKey];
     const mappingEntries = Object.entries(file.settings.mapping).filter(([, path]) => path && path.trim() !== '');
     const mapping = Object.fromEntries(mappingEntries);
+
+    const defaults = file.settings.defaultValues || {};
+    Object.keys(defaults).forEach((key) => {
+        if (!mapping[key] && base.mapping?.[key]) {
+            mapping[key] = base.mapping[key];
+        }
+    });
 
     return {
         ...base,
