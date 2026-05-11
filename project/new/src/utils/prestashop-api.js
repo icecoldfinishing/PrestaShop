@@ -205,6 +205,48 @@ export async function psLoginCustomer(email, password) {
   }
 }
 
+export async function psLoginAdmin(email, password) {
+  if (!email || !password) {
+    throw new Error('Email et mot de passe requis.');
+  }
+  const data = await psGet('employees', '', {
+    'filter[email]': `[${email}]`,
+    display: 'full',
+  });
+  const employeeData = data?.prestashop?.employees?.employee;
+  const employee = Array.isArray(employeeData) ? employeeData[0] : employeeData;
+
+  if (!employee) {
+    throw new Error('Identifiants incorrects (Email non trouvé).');
+  }
+
+  const dbPasswd = getXmlText(employee.passwd);
+  let isMatch = false;
+  try {
+    if (dbPasswd.startsWith('$2y$') || dbPasswd.startsWith('$2a$')) { 
+      isMatch = bcrypt.compareSync(password, dbPasswd);
+    } else {  
+      isMatch = (password === dbPasswd);
+    }
+  } catch (error) {
+    console.error('Erreur lors de la vérification du mot de passe:', error);
+    isMatch = (password === dbPasswd);
+  }
+
+  if (isMatch) {
+    return {
+      id: employee.id,
+      email: getXmlText(employee.email),
+      firstname: getXmlText(employee.firstname),
+      lastname: getXmlText(employee.lastname),
+    };
+  } else {
+    throw new Error('Mot de passe incorrect.');
+  }
+}
+
+
+
 /**
  * Met a jour l'etat d'une commande via order_history.
  *

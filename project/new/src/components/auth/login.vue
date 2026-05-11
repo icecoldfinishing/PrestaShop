@@ -1,15 +1,14 @@
 <script setup>
 import { ref } from "vue";
-import { useRoute, useRouter } from "vue-router";
 import { setLoggedAdmin } from "../../utils/auth-state";
+import { psLoginAdmin } from "../../utils/prestashop-api";
+
+const emit = defineEmits(["success"]);
 
 const DEFAULT_ADMIN = {
-    email: "admin@prestashop.com",
-    password: "password",
+    email: "rohyamboara@gmail.com",
+    password: "rohybapex",
 };
-
-const router = useRouter();
-const route = useRoute();
 
 const credentials = ref({
     email: DEFAULT_ADMIN.email,
@@ -24,17 +23,9 @@ const handleLogin = async () => {
     errorMsg.value = "";
 
     try {
-        const email = credentials.value.email.trim();
-        const password = credentials.value.password;
-
-        if (email !== DEFAULT_ADMIN.email || password !== DEFAULT_ADMIN.password) {
-            throw new Error("Identifiants administrateur incorrects.");
-        }
-
-        setLoggedAdmin({ email });
-
-        const redirect = route.query.redirect || "/admin/home";
-        router.replace(redirect);
+        const admin = await psLoginAdmin(credentials.value.email, credentials.value.password);
+        setLoggedAdmin(admin);
+        emit("success", admin);
     } catch (error) {
         errorMsg.value = error.message || "Erreur lors de la connexion.";
     } finally {
