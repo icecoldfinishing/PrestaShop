@@ -204,3 +204,27 @@ export async function psLoginCustomer(email, password) {
     throw new Error('Mot de passe incorrect.');
   }
 }
+
+/**
+ * Met a jour l'etat d'une commande via order_history.
+ *
+ * @param {string|number} orderId
+ * @param {string|number} stateId
+ * @returns {Promise<string>}
+ */
+export async function psUpdateOrderState(orderId, stateId) {
+  if (!orderId || !stateId) {
+    throw new Error("Order ID et state ID requis.");
+  }
+
+  const xmlData = builder.build({
+    prestashop: {
+      order_history: {
+        id_order: String(orderId),
+        id_order_state: String(stateId),
+      },
+    },
+  });
+
+  return psPost("order_histories", xmlData);
+}

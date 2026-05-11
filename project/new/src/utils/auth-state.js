@@ -25,3 +25,19 @@ export function setLoggedCustomer(customer) {
 export function logout() {
     setLoggedCustomer(null);
 }
+
+export const loggedAdmin = ref(JSON.parse(localStorage.getItem('loggedAdmin') || 'null'));
+export const isAdminLoggedIn = computed(() => !!loggedAdmin.value);
+
+export function setLoggedAdmin(admin) {
+    loggedAdmin.value = admin;
+    if (admin) {
+        localStorage.setItem('loggedAdmin', JSON.stringify(admin));
+    } else {
+        localStorage.removeItem('loggedAdmin');
+    }
+}
+
+export function adminLogout() {
+    setLoggedAdmin(null);
+}
