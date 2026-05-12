@@ -368,9 +368,14 @@ export async function psGetProductFullDetails(productId) {
   }
 }
 
-const loadCartState = () => {
+const buildCartKey = (ownerId) => {
+  const key = ownerId ? String(ownerId) : 'guest';
+  return `${CART_STORAGE_KEY}_${key}`;
+};
+
+const loadCartState = (ownerId) => {
   try {
-    const raw = localStorage.getItem(CART_STORAGE_KEY);
+    const raw = localStorage.getItem(buildCartKey(ownerId));
     if (!raw) return { items: [], total: 0, count: 0 };
     const parsed = JSON.parse(raw);
     if (!parsed || !Array.isArray(parsed.items)) {
@@ -387,19 +392,28 @@ const loadCartState = () => {
 };
 
 const persistCart = (state) => {
-  localStorage.setItem(CART_STORAGE_KEY, JSON.stringify({
+  localStorage.setItem(buildCartKey(state.ownerId), JSON.stringify({
     items: state.items,
     total: Number(state.total) || 0,
     count: Number(state.count) || 0,
   }));
 };
 
-const initialCart = loadCartState();
+const initialCart = loadCartState(null);
 
 export const cart = reactive({
+  ownerId: null,
   items: initialCart.items,
   total: initialCart.total,
   count: initialCart.count,
+
+  setOwner(ownerId) {
+    this.ownerId = ownerId || null;
+    const next = loadCartState(this.ownerId);
+    this.items = next.items;
+    this.total = next.total;
+    this.count = next.count;
+  },
 
   add(product, quantity = 1, variants = {}) {
     // On crée une clé unique pour gérer les mêmes produits avec des variantes différentes

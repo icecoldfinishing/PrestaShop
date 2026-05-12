@@ -24,6 +24,7 @@ import OrderList from "./components/BO/order/OrderList.vue";
 import DataResetManager from "./components/BO/reset/DataResetManager.vue";
 
 import { loggedCustomer, logout, loggedAdmin, adminLogout } from "./utils/auth-state";
+import { cart } from "./utils/prestashop-api";
 
 import "bootstrap/dist/css/bootstrap.min.css";
 import "bootstrap/dist/js/bootstrap.bundle.min.js";
@@ -122,11 +123,13 @@ const goToHomeFO = () => {
 
 const handleCustomerLogout = () => {
   logout();
+  cart.setOwner(null);
   currentPage.value = PAGE.FO_LOGIN;
 };
 
 /* ================= LOGIN SUCCESS ================= */
 const handleFoLogin = () => {
+  cart.setOwner(loggedCustomer.value?.id || null);
   currentPage.value = PAGE.FO_HOME;
 };
 
@@ -266,6 +269,7 @@ const switchMode = (newMode) => {
 
         <Cart
           v-if="mode === 'FO' && currentPage === PAGE.FO_CART && isCustomer"
+          @continueShopping="goToHomeFO"
         />
 
         <!-- ================= BO ================= -->
