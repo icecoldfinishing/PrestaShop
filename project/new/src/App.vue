@@ -7,9 +7,11 @@ import AdminLogin from "./components/FO/auth/login.vue";
 import ApiResponseViewer from "./components/BO/API/ApiResponseViewer.vue";
 import Home from "./components/BO/home/Home.vue";
 import Import from "./components/BO/import/Import.vue";
+import HomeFO from "./components/FO/home/Home.vue";
 
 import ProductList from "./components/BO/product/ProductList.vue";
-import ProductListFO from "./components/FO/product/ProductList.vue";
+import ProductDetailFO from "./components/FO/product/ProductDetail.vue";
+
 
 import ProductCreate from "./components/BO/product/ProductCreate.vue";
 import ProductEdit from "./components/BO/product/ProductEdit.vue";
@@ -27,11 +29,13 @@ import "bootstrap/dist/css/bootstrap.min.css";
 import "bootstrap/dist/js/bootstrap.bundle.min.js";
 
 /* ================= MODE ================= */
-const mode = ref("BO");
+const mode = ref("FO");
 
 /* ================= PAGE STATE ================= */
 const PAGE = {
+  FO_HOME: "fo-home",
   FO_PRODUCTS: "products-list-fo",
+  FO_PRODUCT_DETAIL: "fo-product-detail",
   FO_LOGIN: "fo-login",
 
   BO_HOME: "home",
@@ -50,11 +54,12 @@ const PAGE = {
   BO_RESET: "data-reset",
 };
 
-const currentPage = ref(PAGE.BO_CSV);
+const currentPage = ref(PAGE.FO_HOME);
 
 /* ================= DATA ================= */
 const selectedProductId = ref(null);
 const selectedCustomerId = ref(null);
+const selectedFoProductId = ref(null);
 
 /* ================= SECURITY ================= */
 const isAdmin = computed(() => !!loggedAdmin.value);
@@ -88,6 +93,16 @@ const openFoLogin = () => {
   currentPage.value = PAGE.FO_LOGIN;
 };
 
+const openFoProduct = (id) => {
+  selectedFoProductId.value = id;
+  currentPage.value = PAGE.FO_PRODUCT_DETAIL;
+};
+
+const closeFoProduct = () => {
+  currentPage.value = PAGE.FO_HOME;
+  selectedFoProductId.value = null;
+};
+
 /* ================= ADMIN ================= */
 const handleAdminLogin = () => {
   currentPage.value = PAGE.BO_HOME;
@@ -108,7 +123,7 @@ const switchMode = (newMode) => {
   mode.value = newMode;
 
   if (newMode === "FO") {
-    currentPage.value = PAGE.FO_PRODUCTS;
+    currentPage.value = PAGE.FO_HOME;
   }
 
   if (newMode === "BO") {
@@ -126,8 +141,8 @@ const switchMode = (newMode) => {
 
       <div class="d-flex gap-2">
         <button class="btn btn-outline-light btn-sm"
-                @click="currentPage = 'products-list-fo'">
-          Produits
+                @click="currentPage = 'fo-home'">
+          Accueil
         </button>
 
         <button class="btn btn-outline-light btn-sm"
@@ -221,9 +236,16 @@ const switchMode = (newMode) => {
       <div class="flex-grow-1 overflow-auto bg-light p-4">
 
         <!-- FO -->
-        <ProductListFO
-          v-if="mode === 'FO' && currentPage === PAGE.FO_PRODUCTS"
-          @require-login="openFoLogin"
+
+        <HomeFO
+          v-if="mode === 'FO' && currentPage === PAGE.FO_HOME"
+          @view="openFoProduct"
+        />
+
+        <ProductDetailFO
+          v-if="mode === 'FO' && currentPage === PAGE.FO_PRODUCT_DETAIL"
+          :product-id="selectedFoProductId"
+          @back="closeFoProduct"
         />
 
         <Auth v-if="mode === 'FO' && currentPage === PAGE.FO_LOGIN" />

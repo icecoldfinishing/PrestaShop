@@ -1,0 +1,303 @@
+<script setup lang="ts">
+import { ref, onMounted, watch } from 'vue';
+
+import {
+    getXmlText,
+    psGet,
+    psGetProductFeatures,
+    psGetProductCombinations
+} from '../../../utils/prestashop-api';
+
+type ProductDetail = {
+    id: number;
+    name: string;
+    reference: string;
+    priceHT: number;
+    priceTTC: number;
+    description: string;
+    imageUrl: string | null;
+    attributes: string[];
+};
+
+const TAX_RATE = 0.2;
+
+const props = defineProps<{
+    productId: number | null;
+}>();
+
+const emit = defineEmits<{
+    (e: 'back'): void;
+}>();
+
+const product = ref<ProductDetail | null>(null);
+
+const loading = ref(false);
+
+const getImageUrl = (
+    productId: number,
+    imageId: string | number | null
+) => {
+    if (!productId || !imageId) return null;
+
+    return `http://localhost:8088/api/images/products/${productId}/${imageId}`;
+};
+
+// 👉 extraction attributs simple
+const extractAttributes = (p: any): string[] => {
+    const combinations =
+        p?.associations?.combinations?.combination;
+
+    if (!combinations) return [];
+
+    const list = Array.isArray(combinations)
+        ? combinations
+        : [combinations];
+
+    return list
+        .map((c: any) => {
+            const attrs =
+                c?.associations?.product_option_values
+                    ?.product_option_value;
+
+            if (!attrs) return '';
+
+            const values = Array.isArray(attrs)
+                ? attrs
+                : [attrs];
+
+            return values
+                .map((v: any) => {
+                    const nameObj =
+                        v?.name?.language;
+
+                    if (!nameObj) return '';
+
+                    return Array.isArray(nameObj)
+                        ? getXmlText(nameObj[0])
+                        : getXmlText(nameObj);
+                })
+                .filter(Boolean)
+                .join(' / ');
+        })
+        .filter(Boolean);
+};
+
+const loadProduct = async (
+    id: number | null
+) => {
+    if (!id) {
+        product.value = null;
+        return;
+    }
+
+    loading.value = true;
+
+    try {
+        const data: any = await psGet(
+            'products',
+            id,
+            {
+                display: 'full',
+            }
+        );
+
+        const p = data?.prestashop?.product;
+
+        if (!p) {
+            product.value = null;
+            return;
+        }
+
+        /**
+         * 🔥 FEATURES
+         */
+        const features =
+            await psGetProductFeatures(id);
+
+        console.log(
+            '🔥 PRODUCT FEATURES:',
+            features
+        );
+
+        /**
+         * 🔥 COMBINATIONS
+         */
+        const combinations =
+            await psGetProductCombinations(id);
+
+        console.log(
+            '🔥 PRODUCT COMBINATIONS:',
+            combinations
+        );
+
+        const nameObj = p.name?.language;
+
+        const name = Array.isArray(nameObj)
+            ? getXmlText(nameObj[0])
+            : getXmlText(nameObj);
+
+        const descObj =
+            p.description_short?.language;
+
+        const description = Array.isArray(
+            descObj
+        )
+            ? getXmlText(descObj[0])
+            : getXmlText(descObj);
+
+        // images
+        const images =
+            p.associations?.images?.image;
+
+        let imageId:
+            | string
+            | number
+            | null = null;
+
+        if (Array.isArray(images)) {
+            imageId =
+                images.length > 0
+                    ? images[0].id
+                    : null;
+        } else if (images?.id) {
+            imageId = images.id;
+        }
+
+        // prix
+        const priceHT = parseFloat(
+            p.price || '0'
+        );
+
+        const priceTTC =
+            priceHT * (1 + TAX_RATE);
+
+        // attributs simple
+        const attributes =
+            extractAttributes(p);
+
+        product.value = {
+            id: Number(p.id),
+            name,
+            reference: p.reference || '',
+            priceHT,
+            priceTTC,
+            description:
+                description ||
+                'No description',
+            imageUrl: getImageUrl(
+                Number(p.id),
+                imageId
+            ),
+            attributes,
+        };
+    } catch (err) {
+        console.error(
+            '❌ Error fetching product:',
+            err
+        );
+
+        product.value = null;
+    } finally {
+        loading.value = false;
+    }
+};
+
+watch(
+    () => props.productId,
+    (v) => loadProduct(v)
+);
+
+onMounted(() => {
+    loadProduct(
+        props.productId ?? null
+    );
+});
+</script>
+
+<template>
+    <section class="detail">
+        <button class="back" @click="emit('back')">Retour</button>
+
+        <div v-if="loading" class="state">Chargement...</div>
+
+        <div v-else-if="product" class="layout">
+            <div class="media">
+                <img v-if="product.imageUrl" :src="product.imageUrl" />
+                <div v-else class="media-fallback">No image</div>
+            </div>
+
+            <div class="info">
+                <p class="meta">Ref: {{ product.reference || 'N/A' }}</p>
+                <h2>{{ product.name }}</h2>
+
+                <div class="price">
+                    {{ product.priceTTC.toFixed(2) }} EUR
+                    <span class="ht">HT: {{ product.priceHT.toFixed(2) }} €</span>
+                </div>
+
+                <!-- ATTRIBUTS -->
+                <div v-if="product.attributes.length" class="attributes">
+                    <h4>Variantes :</h4>
+                    <ul>
+                        <li v-for="(a, i) in product.attributes" :key="i">
+                            {{ a }}
+                        </li>
+                    </ul>
+                </div>
+
+                <p class="desc" v-html="product.description"></p>
+            </div>
+        </div>
+
+        <div v-else class="state">Aucun produit.</div>
+    </section>
+</template>
+
+<style scoped>
+.detail {
+    padding: 24px;
+    font-family: sans-serif;
+}
+
+.back {
+    background: #111;
+    color: white;
+    padding: 10px;
+    border-radius: 8px;
+}
+
+.layout {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+}
+
+.media img {
+    max-width: 100%;
+}
+
+.price {
+    font-size: 22px;
+    font-weight: bold;
+    color: #e85d04;
+}
+
+.ht {
+    font-size: 12px;
+    color: #666;
+    margin-left: 10px;
+}
+
+.attributes {
+    margin-top: 10px;
+}
+
+.attributes li {
+    font-size: 14px;
+    color: #333;
+}
+
+.state {
+    color: gray;
+}
+</style>

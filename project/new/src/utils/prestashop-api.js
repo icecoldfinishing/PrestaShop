@@ -95,17 +95,7 @@ export async function psCount(resource) {
   }
 }
 
-export function getXmlText(value) {
-  if (value === null || value === undefined) {
-    return '';
-  }
 
-  if (typeof value === 'object' && '#text' in value) {
-    return String(value['#text']).trim();
-  }
-
-  return String(value).trim();
-}
 
 /**
  * Retrieve all IDs for a given API resource.
@@ -269,4 +259,95 @@ export async function psUpdateOrderState(orderId, stateId) {
   });
 
   return psPost("order_histories", xmlData);
+}
+
+export function getXmlText(value) {
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'object' && '#text' in value) {
+    return String(value['#text']).trim();
+  }
+  return String(value).trim();
+}
+
+// Nettoie les IDs (gère les objets { #text: id })
+export const cleanId = (idField) => {
+  if (!idField) return '';
+  if (typeof idField === 'object') {
+    return String(idField['#text'] || idField['@_id'] || '').trim();
+  }
+  return String(idField).trim();
+};
+
+// Extrait le texte multilingue
+export const extractText = (field) => {
+  if (!field) return '';
+  const target = field.language ? field.language : field;
+  return getXmlText(target);
+};
+
+/**
+ * ==========================================
+ * ADVANCED PRODUCT DATA FUNCTIONS
+ * ==========================================
+ */
+
+/**
+ * Récupère les caractéristiques et variantes d'un produit avec noms complets
+ */
+export async function psGetProductFullDetails(productId) {
+  try {
+    // 1. Dictionnaires (Idéalement, à mettre en cache hors de la fonction si appelée souvent)
+    const [allFeaturesData, allGroupsData] = await Promise.all([
+      psGet('product_features', null, { display: 'full' }),
+      psGet('product_options', null, { display: 'full' })
+    ]);
+
+    const featureMap = {};
+    [].concat(allFeaturesData?.prestashop?.product_features?.product_feature || []).forEach(f => {
+      featureMap[cleanId(f.id)] = extractText(f.name);
+    });
+
+    const groupMap = {};
+    [].concat(allGroupsData?.prestashop?.product_options?.product_option || []).forEach(g => {
+      groupMap[cleanId(g.id)] = extractText(g.name);
+    });
+
+    // 2. Le Produit (Appel principal)
+    const productResponse = await psGet('products', productId);
+    const p = productResponse?.prestashop?.product;
+    if (!p) throw new Error("Produit non trouvé");
+
+    // --- Features (Specs) ---
+    const pFeatures = [].concat(p.associations?.product_features?.product_feature || []);
+    const features = await Promise.all(pFeatures.map(async (pf) => {
+      const fId = cleanId(pf.id_feature);
+      const valData = await psGet('product_feature_values', cleanId(pf.id_feature_value));
+      return `${featureMap[fId] || 'Spec'}: ${extractText(valData?.prestashop?.product_feature_value?.value)}`;
+    }));
+
+    // --- Variants (Combinations) ---
+    const pCombos = [].concat(p.associations?.combinations?.combination || []);
+    const variants = [];
+    for (const combo of pCombos) {
+      const comboDetail = await psGet('combinations', cleanId(combo.id));
+      const attrValues = [].concat(comboDetail?.prestashop?.combination?.associations?.product_option_values?.product_option_value || []);
+      const labelParts = await Promise.all(attrValues.map(async (av) => {
+        const attrValData = await psGet('product_option_values', cleanId(av.id));
+        const avData = attrValData?.prestashop?.product_option_value;
+        return `${groupMap[cleanId(avData?.id_attribute_group)] || 'Attr'}: ${extractText(avData?.name)}`;
+      }));
+      variants.push(labelParts.join(' / '));
+    }
+
+    // ON RETOURNE TOUT : Le produit brut + les labels calculés
+    return {
+      raw: p,
+      features,
+      variants
+    };
+
+  } catch (error) {
+    console.error("Error in psGetProductFullDetails:", error);
+    throw error;
+  }
 }
