@@ -38,3 +38,20 @@ export async function psGet(
 
   return parser.parse(response.data);
 }
+
+export async function psPost(resource: string, xmlData: string): Promise<string> {
+  const response = await axios.post<string>(
+    `${prestashopApiConfig.baseUrl}/${resource}`,
+    xmlData,
+    {
+      params: {
+        ws_key: prestashopApiConfig.apiKey,
+      },
+      headers: {
+        "Content-Type": "application/xml",
+      },
+    }
+  );
+
+  return response.data;
+}
