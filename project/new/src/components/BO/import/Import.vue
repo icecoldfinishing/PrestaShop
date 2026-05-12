@@ -1,132 +1,181 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { psPost, psGet } from '../../../utils/prestashop-api'
+import { psPost, psGet, psPut, getXmlText } from '../../../utils/prestashop-api'
 
 const loading = ref(false)
 const logs = ref<string[]>([])
 
-const products = [
-    { nom: 'Tshirt', reference: 'T_01', prix_ttc: 12.5, taxe: 19.1, prix_achat: 8.5 },
-    { nom: 'Pantalon', reference: 'P_01', prix_ttc: 18.99, taxe: 19.2, prix_achat: 14.33 },
-    { nom: 'Casquette', reference: 'C_03', prix_ttc: 5, taxe: 19.3, prix_achat: 2 },
-    { nom: 'Montre', reference: 'M_02', prix_ttc: 56, taxe: 19.4, prix_achat: 40 }
+// Données corrigées (prix avec point pour le JS)
+const csvData = [
+    { ref: 'T_01', spec: 'taille', val: 'ngoza', stock: 13, prix: 12.5 },
+    { ref: 'T_01', spec: 'taille', val: 'kely', stock: 10, prix: 15 },
+    { ref: 'P_01', spec: 'couleur', val: 'mainty', stock: 5, prix: 23.49 },
+    { ref: 'P_01', spec: 'couleur', val: 'fotsy', stock: 3, prix: 18.99 },
+    { ref: 'C_03', spec: '', val: '', stock: 10, prix: 5 },
+    { ref: 'M_02', spec: '', val: '', stock: 11, prix: 56 }
 ]
 
-/* --- PARSER XML --- */
-function getXmlId(xmlString: string): string | null {
-    const parser = new DOMParser()
-    const xmlDoc = parser.parseFromString(xmlString, "text/xml")
-    const idElement = xmlDoc.getElementsByTagName('id')[0]
-    return idElement ? idElement.textContent : null
+/* --- HELPER POUR EXTRAIRE L'ID DU XML DE RETOUR (STRING) --- */
+const getXmlId = (xmlString: string) => {
+    if (typeof xmlString !== 'string') return null;
+    const d = new DOMParser().parseFromString(xmlString, "text/xml")
+    return d.getElementsByTagName('id')[0]?.textContent || null
 }
 
-/* --- WORKFLOW TAXE --- */
-async function getOrCreateTaxRuleGroup(rate: number) {
-    const groupName = `TVA ${rate}%`
-    
-    // Recherche filtrée
-    const rawList = await psGet('tax_rule_groups', '', { display: 'full', 'filter[name]': groupName })
-    const parser = new DOMParser()
-    const xmlDoc = parser.parseFromString(rawList, "text/xml")
-    const existingGroup = xmlDoc.getElementsByTagName('tax_rule_group')[0]
+/* =========================================================
+   GESTION DES ATTRIBUTS (CHECK STRICT)
+========================================================= */
+async function getOrCreateAttribute(groupName: string, valueName: string) {
+    if (!groupName || !valueName) return null
 
-    if (existingGroup) {
-        return existingGroup.getElementsByTagName('id')[0].textContent
+    // 1. CHERCHER LE GROUPE (Renvoie déjà un objet JSON via psGet)
+    const resGroup = await psGet('product_options', '', { 
+        display: 'full', 
+        'filter[name]': `[${groupName}]` 
+    })
+    
+    // Extraction sécurisée de l'ID depuis le JSON
+    const groupData = resGroup?.prestashop?.product_options?.product_option;
+    const group = Array.isArray(groupData) ? groupData[0] : groupData;
+    let groupId = group ? getXmlText(group.id) : null;
+
+    if (!groupId) {
+        const xml = `<prestashop><product_option>
+            <group_type><![CDATA[select]]></group_type>
+            <name><language id="1"><![CDATA[${groupName}]]></language></name>
+            <public_name><language id="1"><![CDATA[${groupName}]]></language></public_name>
+        </product_option></prestashop>`
+        groupId = getXmlId(await psPost('product_options', xml))
+        console.log(`✅ Groupe créé : ${groupName} (ID: ${groupId})`)
     }
 
-    // Création Taxe brute
-    const taxXml = `<prestashop><tax>
-        <rate>${rate}</rate>
-        <active>1</active>
-        <name><language id="1"><![CDATA[${groupName}]]></language></name>
-    </tax></prestashop>`
-    const taxId = getXmlId(await psPost('taxes', taxXml))
+    // 2. CHERCHER LA VALEUR DANS CE GROUPE
+    const resVal = await psGet('product_option_values', '', { 
+        display: 'full', 
+        'filter[name]': `[${valueName}]`,
+        'filter[id_attribute_group]': `[${groupId}]` 
+    })
 
-    // Création Groupe
-    const groupXml = `<prestashop><tax_rule_group>
-        <name><![CDATA[${groupName}]]></name>
-        <active>1</active>
-    </tax_rule_group></prestashop>`
-    const taxGroupId = getXmlId(await psPost('tax_rule_groups', groupXml))
+    const valData = resVal?.prestashop?.product_option_values?.product_option_value;
+    const val = Array.isArray(valData) ? valData[0] : valData;
+    let valId = val ? getXmlText(val.id) : null;
 
-    // Liaison Règle (ID 8 = France)
-    const ruleXml = `<prestashop><tax_rule>
-        <id_tax_rules_group>${taxGroupId}</id_tax_rules_group>
-        <id_country>8</id_country>
-        <id_tax>${taxId}</id_tax>
-    </tax_rule></prestashop>`
-    await psPost('tax_rules', ruleXml)
+    if (!valId) {
+        const xml = `<prestashop><product_option_value>
+            <id_attribute_group><![CDATA[${groupId}]]></id_attribute_group>
+            <name><language id="1"><![CDATA[${valueName}]]></language></name>
+        </product_option_value></prestashop>`
+        valId = getXmlId(await psPost('product_option_values', xml))
+        console.log(`✅ Valeur créée : ${valueName} (ID: ${valId})`)
+    }
 
-    return taxGroupId
+    return valId
 }
 
-/* --- IMPORTATION PRODUITS --- */
-async function runImport() {
+/* =========================================================
+   MISE À JOUR STOCK
+========================================================= */
+async function updateStock(prodId: string, combId: string, qty: number) {
+    const res = await psGet('stock_availables', '', { 
+        'filter[id_product]': `[${prodId}]`, 
+        'filter[id_product_attribute]': `[${combId || 0}]` 
+    })
+    
+    const stockData = res?.prestashop?.stock_availables?.stock_available;
+    const stock = Array.isArray(stockData) ? stockData[0] : stockData;
+    const stockId = stock ? getXmlText(stock.id) : null;
+    
+    if (stockId) {
+        const xml = `<prestashop><stock_available>
+            <id>${stockId}</id>
+            <id_product>${prodId}</id_product>
+            <id_product_attribute>${combId || 0}</id_product_attribute>
+            <quantity>${qty}</quantity>
+            <depends_on_stock>0</depends_on_stock>
+            <out_of_stock>2</out_of_stock>
+        </stock_available></prestashop>`
+        await psPut('stock_availables', xml)
+    }
+}
+
+/* =========================================================
+   IMPORTATION
+========================================================= */
+async function startImport() {
     loading.value = true
     logs.value = []
 
-    for (const p of products) {
+    // Grouper par référence pour ne créer qu'un seul parent
+    const grouped = csvData.reduce((acc: any, item) => {
+        if (!acc[item.ref]) acc[item.ref] = []
+        acc[item.ref].push(item)
+        return acc
+    }, {})
+
+    for (const ref in grouped) {
+        const items = grouped[ref]
+        const hasVariants = items.some(i => i.spec !== '')
+
         try {
-            const taxGroupId = await getOrCreateTaxRuleGroup(p.taxe)
+            // 1. Créer le Parent (Uniquement s'il n'existe pas ou par défaut ici)
+            const slug = ref.toLowerCase().replace(/_/g, '-')
+            const productXml = `<prestashop><product>
+                <id_shop_default>1</id_shop_default>
+                <active>1</active>
+                <id_category_default>2</id_category_default>
+                <name><language id="1"><![CDATA[Produit ${ref}]]></language></name>
+                <link_rewrite><language id="1"><![CDATA[${slug}]]></language></link_rewrite>
+                <reference>${ref}</reference>
+                <price>0</price> 
+            </product></prestashop>`
+            
+            const prodId = getXmlId(await psPost('products', productXml))
+            logs.value.push(`📦 [${ref}] Parent créé (ID: ${prodId})`)
 
-            const prixHT = p.prix_ttc / (1 + p.taxe / 100)
-            const slug = p.nom.toLowerCase().replace(/[^a-z0-9]/g, '-')
-
-            const productXml = `<prestashop xmlns:xlink="http://www.w3.org/1999/xlink">
-                <product>
-                    <id_shop_default>1</id_shop_default>
-                    <id_category_default>2</id_category_default>
-                    <active>1</active>
-                    <state>1</state>
-                    <visibility>both</visibility>
+            for (const item of items) {
+                if (hasVariants && item.spec) {
+                    const valId = await getOrCreateAttribute(item.spec, item.val)
                     
-                    <id_tax_rules_group>${taxGroupId}</id_tax_rules_group>
+                    const combXml = `<prestashop><combination>
+                        <id_product>${prodId}</id_product>
+                        <reference>${item.ref}-${item.val}</reference>
+                        <price>${(item.prix / 1.2).toFixed(6)}</price>
+                        <minimal_quantity>1</minimal_quantity>
+                        <associations>
+                            <product_option_values>
+                                <product_option_value><id>${valId}</id></product_option_value>
+                            </product_option_values>
+                        </associations>
+                    </combination></prestashop>`
                     
-                    <price>${prixHT.toFixed(6)}</price>
-                    <wholesale_price>${p.prix_achat.toFixed(6)}</wholesale_price>
-                    
-                    <reference>${p.reference}</reference>
-                    <name><language id="1"><![CDATA[${p.nom}]]></language></name>
-                    <link_rewrite><language id="1"><![CDATA[${slug}]]></language></link_rewrite>
-                    
-                    <available_for_order>1</available_for_order>
-                    <show_price>1</show_price>
-                    <minimal_quantity>1</minimal_quantity>
-                    <condition>new</condition>
-                    <indexed>1</indexed>
-                    
-                    <associations>
-                        <categories>
-                            <category><id>2</id></category>
-                        </categories>
-                    </associations>
-                </product>
-            </prestashop>`
-
-            await psPost('products', productXml)
-
-            logs.value.push(`✅ ${p.nom} importé (TVA ${p.taxe}% - Groupe ${taxGroupId})`)
+                    const combId = getXmlId(await psPost('combinations', combXml))
+                    await updateStock(prodId, combId!, item.stock)
+                    logs.value.push(`  🔹 Variante ${item.val} liée au groupe ${item.spec}`)
+                } else {
+                    // Produit simple
+                    const prixHT = item.prix ? (item.prix / 1.2).toFixed(6) : "0"
+                    await psPut('products', `<prestashop><product><id>${prodId}</id><price>${prixHT}</price></product></prestashop>`)
+                    await updateStock(prodId, '0', item.stock)
+                    logs.value.push(`  ✅ Produit simple stock mis à jour`)
+                }
+            }
         } catch (e: any) {
-            console.error(e)
-            logs.value.push(`❌ ${p.nom} : ${e.message || e}`)
+            logs.value.push(`❌ Erreur ${ref}: ${e.message}`)
         }
     }
-
     loading.value = false
-    logs.value.push('--- Import terminé. Actualise le Back Office ---')
 }
 </script>
 
 <template>
-<div class="p-6">
-    <h2 class="text-xl font-bold mb-4">Final Import : Fix Tax Overriding</h2>
-    <button @click="runImport" :disabled="loading" class="bg-blue-600 text-white px-6 py-2 rounded">
-        {{ loading ? 'Importation...' : 'Lancer' }}
-    </button>
-    <div class="mt-4 space-y-1">
-        <div v-for="(log, i) in logs" :key="i" class="p-2 bg-gray-50 border-l-4 border-blue-500 font-mono text-xs">
-            {{ log }}
+    <div class="p-6">
+        <button @click="startImport" :disabled="loading" class="bg-blue-700 text-white px-5 py-2 rounded shadow">
+            {{ loading ? 'Importation...' : 'Lancer Import Variantes' }}
+        </button>
+        <div class="mt-4 bg-slate-900 text-slate-300 p-4 font-mono text-xs h-96 overflow-y-auto rounded shadow-inner">
+            <div v-for="log in logs" :key="log" class="mb-1 border-b border-slate-800 pb-1">
+                {{ log }}
+            </div>
         </div>
     </div>
-</div>
 </template>
