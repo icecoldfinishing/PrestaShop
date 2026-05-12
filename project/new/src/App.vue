@@ -12,6 +12,7 @@ import HomeFO from "./components/FO/home/Home.vue";
 import ProductList from "./components/BO/product/ProductList.vue";
 import ProductDetailFO from "./components/FO/product/ProductDetail.vue";
 import Cart from "./components/FO/cart/Cart.vue";
+import FoOrders from "./components/FO/order/OrderList.vue";
 
 import ProductCreate from "./components/BO/product/ProductCreate.vue";
 import ProductEdit from "./components/BO/product/ProductEdit.vue";
@@ -39,6 +40,7 @@ const PAGE = {
   FO_PRODUCT_DETAIL: "fo-product-detail",
   FO_LOGIN: "fo-login",
   FO_CART: "fo-cart",
+  FO_ORDERS: "fo-orders",
 
   BO_HOME: "home",
   BO_PRODUCTS: "products-list",
@@ -66,6 +68,8 @@ const selectedFoProductId = ref(null);
 /* ================= SECURITY ================= */
 const isAdmin = computed(() => !!loggedAdmin.value);
 const isCustomer = computed(() => !!loggedCustomer.value);
+
+cart.setOwner(loggedCustomer.value?.id || null);
 
 /* ================= GUARD FO ================= */
 const requireCustomer = (nextPage) => {
@@ -115,6 +119,10 @@ const closeFoProduct = () => {
 
 const goToCart = () => {
   requireCustomer(PAGE.FO_CART);
+};
+
+const goToFoOrders = () => {
+  requireCustomer(PAGE.FO_ORDERS);
 };
 
 const goToHomeFO = () => {
@@ -177,6 +185,11 @@ const switchMode = (newMode) => {
         <button class="btn btn-outline-light btn-sm"
                 @click="goToCart">
           Panier
+        </button>
+
+        <button class="btn btn-outline-light btn-sm"
+                @click="goToFoOrders">
+          Mes commandes
         </button>
 
         <button class="btn btn-light btn-sm"
@@ -270,6 +283,10 @@ const switchMode = (newMode) => {
         <Cart
           v-if="mode === 'FO' && currentPage === PAGE.FO_CART && isCustomer"
           @continueShopping="goToHomeFO"
+        />
+
+        <FoOrders
+          v-if="mode === 'FO' && currentPage === PAGE.FO_ORDERS && isCustomer"
         />
 
         <!-- ================= BO ================= -->

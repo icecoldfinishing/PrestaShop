@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-import { cart, psCreateCart } from '../../../utils/prestashop-api';
+import { cart, psCreateCart, psCreateOrder, psEnsureCustomerAddress, psGetCustomerSecureKey } from '../../../utils/prestashop-api';
 import { loggedCustomer } from '../../../utils/auth-state';
 
 // Émissions pour la navigation
@@ -40,8 +40,26 @@ const handleCheckout = async () => {
             id_attribute: 0 // Idéalement à récupérer via les variants
         }));
 
-        // Appel à la fonction API que nous avons créée
-        await psCreateCart(loggedCustomer.value.id, itemsForApi);
+        const addressId = await psEnsureCustomerAddress(loggedCustomer.value);
+        if (!addressId) {
+            alert("Adresse client manquante.");
+            return;
+        }
+
+        const secureKey = await psGetCustomerSecureKey(loggedCustomer.value.id);
+        const cartId = await psCreateCart(loggedCustomer.value.id, itemsForApi, addressId);
+
+        if (!cartId) {
+            throw new Error("Cart ID introuvable.");
+        }
+
+        await psCreateOrder({
+            cartId,
+            customerId: loggedCustomer.value.id,
+            addressId,
+            total: totalPrice.value,
+            secureKey,
+        });
 
         alert("Commande validée dans PrestaShop !");
         cart.clear();

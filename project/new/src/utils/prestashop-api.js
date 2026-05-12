@@ -16,6 +16,15 @@ const parser = new XMLParser({
 
 const builder = new XMLBuilder();
 const CART_STORAGE_KEY = 'fo_cart';
+const DEFAULT_SHOP_ID = 1;
+const DEFAULT_SHOP_GROUP_ID = 1;
+const DEFAULT_CURRENCY_ID = 1;
+const DEFAULT_LANG_ID = 1;
+const DEFAULT_COUNTRY_ID = 1;
+const DEFAULT_CARRIER_ID = 1;
+const COD_MODULE = 'ps_cashondelivery';
+const COD_PAYMENT = 'Paiement a la livraison';
+const COD_STATE_ID = 10;
 
 export async function psGet(resource, id = '', queryParams = {}) {
   const resourcePath =
@@ -271,6 +280,55 @@ export function getXmlText(value) {
   return String(value).trim();
 }
 
+export function getXmlId(xml) {
+  if (!xml || typeof xml !== 'string') return '';
+  const doc = new DOMParser().parseFromString(xml, 'text/xml');
+  return doc.getElementsByTagName('id')[0]?.textContent || '';
+}
+
+export async function psGetCustomerSecureKey(customerId) {
+  if (!customerId) return '';
+  const data = await psGet('customers', customerId, { display: '[id,secure_key]' });
+  return getXmlText(data?.prestashop?.customer?.secure_key) || '';
+}
+
+export async function psEnsureCustomerAddress(customer, defaults = {}) {
+  const customerId = customer?.id;
+  if (!customerId) return null;
+
+  const existing = await psGet('addresses', '', {
+    'filter[id_customer]': `[${customerId}]`,
+    display: '[id]'
+  });
+
+  const addr = existing?.prestashop?.addresses?.address;
+  const firstId = Array.isArray(addr) ? getXmlText(addr[0]?.id) : getXmlText(addr?.id);
+  if (firstId) return firstId;
+
+  const address1 = defaults.address1 || 'Adresse par defaut';
+  const city = defaults.city || 'Antananarivo';
+  const postcode = defaults.postcode || '101';
+  const phone = defaults.phone || '0000000000';
+  const alias = defaults.alias || 'Adresse';
+  const lastname = defaults.lastname || customer?.lastname || 'Client';
+  const firstname = defaults.firstname || customer?.firstname || 'Client';
+
+  const xml = `<prestashop><address>
+    <id_customer>${customerId}</id_customer>
+    <id_country>${DEFAULT_COUNTRY_ID}</id_country>
+    <alias>${alias}</alias>
+    <lastname>${lastname}</lastname>
+    <firstname>${firstname}</firstname>
+    <address1>${address1}</address1>
+    <city>${city}</city>
+    <postcode>${postcode}</postcode>
+    <phone>${phone}</phone>
+  </address></prestashop>`;
+
+  const response = await psPost('addresses', xml);
+  return getXmlId(response);
+}
+
 // Nettoie les IDs (gère les objets { #text: id })
 export const cleanId = (idField) => {
   if (!idField) return '';
@@ -469,20 +527,24 @@ if (cart.items.length) {
   cart.updateTotals();
 }
 
-export async function psCreateCart(customerId, items) {
+export async function psCreateCart(customerId, items, addressId) {
   const cartData = {
     prestashop: {
       cart: {
         id_customer: customerId,
-        id_currency: 1, 
-        id_lang: 1,
+        id_currency: DEFAULT_CURRENCY_ID,
+        id_lang: DEFAULT_LANG_ID,
+        id_shop: DEFAULT_SHOP_ID,
+        id_shop_group: DEFAULT_SHOP_GROUP_ID,
+        id_address_delivery: addressId,
+        id_address_invoice: addressId,
         associations: {
           cart_rows: {
             // PrestaShop attend une liste d'objets cart_row
             cart_row: items.map(item => ({
               id_product: item.id,
               id_product_attribute: item.id_attribute || 0,
-              id_address_delivery: 0, // À mettre à jour lors du checkout
+              id_address_delivery: addressId,
               quantity: item.quantity
             }))
           }
@@ -494,5 +556,79 @@ export async function psCreateCart(customerId, items) {
   // Note : PrestaShop est très sensible aux balises vides. 
   // Si id_product_attribute est 0, il faut s'assurer qu'il est envoyé.
   const xml = builder.build(cartData);
-  return psPost('carts', xml);
+  const response = await psPost('carts', xml);
+  return getXmlId(response);
+}
+
+export async function psCreateOrder({
+  cartId,
+  customerId,
+  addressId,
+  total,
+  secureKey,
+  carrierId = DEFAULT_CARRIER_ID,
+  currencyId = DEFAULT_CURRENCY_ID,
+  langId = DEFAULT_LANG_ID,
+  shopId = DEFAULT_SHOP_ID,
+  shopGroupId = DEFAULT_SHOP_GROUP_ID,
+  paymentModule = COD_MODULE,
+  paymentName = COD_PAYMENT,
+  stateId = COD_STATE_ID,
+}) {
+  const safeTotal = Number(total) ? Number(total).toFixed(6) : '0.000000';
+
+  const xml = `<prestashop><order>
+    <id_address_delivery>${addressId}</id_address_delivery>
+    <id_address_invoice>${addressId}</id_address_invoice>
+    <id_cart>${cartId}</id_cart>
+    <id_currency>${currencyId}</id_currency>
+    <id_lang>${langId}</id_lang>
+    <id_customer>${customerId}</id_customer>
+    <id_carrier>${carrierId}</id_carrier>
+    <id_shop>${shopId}</id_shop>
+    <id_shop_group>${shopGroupId}</id_shop_group>
+
+    <current_state>${stateId}</current_state>
+    <module>${paymentModule}</module>
+    <payment>${paymentName}</payment>
+
+    <recyclable>0</recyclable>
+    <gift>0</gift>
+    <gift_message></gift_message>
+    <mobile_theme>0</mobile_theme>
+
+    <valid>0</valid>
+    <invoice_number>0</invoice_number>
+    <delivery_number>0</delivery_number>
+
+    <total_paid>${safeTotal}</total_paid>
+    <total_paid_real>${safeTotal}</total_paid_real>
+    <total_paid_tax_incl>${safeTotal}</total_paid_tax_incl>
+    <total_paid_tax_excl>${safeTotal}</total_paid_tax_excl>
+
+    <total_products>${safeTotal}</total_products>
+    <total_products_wt>${safeTotal}</total_products_wt>
+
+    <total_shipping>0</total_shipping>
+    <total_shipping_tax_incl>0</total_shipping_tax_incl>
+    <total_shipping_tax_excl>0</total_shipping_tax_excl>
+
+    <total_discounts>0</total_discounts>
+    <total_discounts_tax_incl>0</total_discounts_tax_incl>
+    <total_discounts_tax_excl>0</total_discounts_tax_excl>
+
+    <total_wrapping>0</total_wrapping>
+    <total_wrapping_tax_incl>0</total_wrapping_tax_incl>
+    <total_wrapping_tax_excl>0</total_wrapping_tax_excl>
+
+    <carrier_tax_rate>0</carrier_tax_rate>
+    <conversion_rate>1</conversion_rate>
+    <round_mode>2</round_mode>
+    <round_type>2</round_type>
+
+    <secure_key>${secureKey || ''}</secure_key>
+  </order></prestashop>`;
+
+  const response = await psPost('orders', xml);
+  return getXmlId(response);
 }
