@@ -2,6 +2,7 @@
 import { ref, onMounted, watch } from 'vue';
 import { extractText, psGetProductFullDetails } from '../../../utils/prestashop-api';
 
+// 1. Correction du type : variants doit être un objet Record<nom_du_groupe, liste_de_valeurs>
 type ProductDetail = {
     id: number;
     name: string;
@@ -11,7 +12,7 @@ type ProductDetail = {
     description: string;
     imageUrl: string | null;
     features: string[];
-    variants: string[];
+    variants: Record<string, string[]>; 
 };
 
 const TAX_RATE = 0.2; 
@@ -23,7 +24,6 @@ const loading = ref(false);
 
 const getImageUrl = (productId: number, imageId: string | number | null) => {
     if (!productId || !imageId) return null;
-    // Vérifie bien ton port et ton domaine PrestaShop
     return `http://localhost:8088/api/images/products/${productId}/${imageId}`;
 };
 
@@ -35,15 +35,12 @@ const loadProduct = async (id: number | null) => {
 
     loading.value = true;
     try {
-        // On récupère l'objet complet (raw + features + variants)
         const fullData = await psGetProductFullDetails(id);
         const p = fullData.raw;
 
-        // Image
         const images = p.associations?.images?.image;
         let imageId = Array.isArray(images) ? images[0]?.id : images?.id;
 
-        // Prix
         const priceHT = parseFloat(p.price || '0');
 
         product.value = {
@@ -55,7 +52,8 @@ const loadProduct = async (id: number | null) => {
             description: extractText(p.description) || 'Aucune description',
             imageUrl: getImageUrl(Number(p.id), imageId),
             features: fullData.features,
-            variants: fullData.variants
+            // On garde l'objet tel quel car psGetProductFullDetails le renvoie déjà groupé
+            variants: fullData.variants, 
         };
     } catch (err) {
         console.error('Error fetching product details:', err);
@@ -73,38 +71,39 @@ onMounted(() => loadProduct(props.productId ?? null));
     <section class="detail">
         <button class="back" @click="emit('back')">← Retour</button>
 
-        <div v-if="loading" class="state">Chargement de la fiche complète...</div>
+        <div v-if="loading" class="state">Chargement...</div>
 
         <div v-else-if="product" class="layout">
             <div class="media">
-                <img v-if="product.imageUrl" :src="product.imageUrl" :alt="product.name" />
-                <div v-else class="media-fallback">Aucune image disponible</div>
+                <img v-if="product.imageUrl" :src="product.imageUrl" />
+                <div v-else class="media-fallback">Pas d'image</div>
             </div>
 
             <div class="info">
-                <p class="meta">Référence : {{ product.reference || 'N/A' }}</p>
+                <p class="meta">Ref: {{ product.reference }}</p>
                 <h2>{{ product.name }}</h2>
 
                 <div class="price">
                     {{ product.priceTTC.toFixed(2) }} €
-                    <span class="ht">HT : {{ product.priceHT.toFixed(2) }} €</span>
                 </div>
 
-                <hr />
-
-                <!-- DÉCLINAISONS -->
-                <div class="section" v-if="product.variants.length > 0">
-                    <h3>Options disponibles</h3>
-                    <div class="variant-tags">
-                        <span v-for="(v, idx) in product.variants" :key="idx" class="tag">{{ v }}</span>
+                <!-- SELECTEURS DE VARIANTES DYNAMIQUES -->
+                <!-- On vérifie si l'objet contient des clés (Taille, Couleur, etc.) -->
+                <div class="selectors" v-if="Object.keys(product.variants).length > 0">
+                    <div v-for="(values, groupName) in product.variants" :key="groupName" class="select-group">
+                        <label>{{ groupName }}</label>
+                        <select>
+                            <option v-for="val in values" :key="val" :value="val">
+                                {{ val }}
+                            </option>
+                        </select>
                     </div>
                 </div>
 
-                <!-- CARACTÉRISTIQUES -->
-                <div class="section" v-if="product.features.length > 0">
-                    <h3>Spécifications</h3>
-                    <ul class="spec-list">
-                        <li v-for="(f, idx) in product.features" :key="idx">{{ f }}</li>
+                <div class="section specs" v-if="product.features.length > 0">
+                    <h3>Caractéristiques</h3>
+                    <ul>
+                        <li v-for="f in product.features" :key="f">{{ f }}</li>
                     </ul>
                 </div>
 
@@ -118,22 +117,27 @@ onMounted(() => loadProduct(props.productId ?? null));
 </template>
 
 <style scoped>
-.detail { padding: 24px; font-family: sans-serif; max-width: 1200px; margin: 0 auto; }
-.back { background: #333; color: white; padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer; margin-bottom: 20px; }
-.layout { display: grid; grid-template-columns: 450px 1fr; gap: 40px; }
-.media img { width: 100%; border-radius: 8px; border: 1px solid #eee; }
-.media-fallback { height: 400px; background: #f5f5f5; display: flex; align-items: center; justify-content: center; color: #999; }
+/* Tes styles restent inchangés, ils sont corrects */
+.detail { padding: 24px; font-family: sans-serif; }
+.back { background: #111; color: white; padding: 10px; border-radius: 8px; cursor: pointer; border: none; margin-bottom: 20px;}
+.layout { display: grid; grid-template-columns: 1fr 1.5fr; gap: 30px; }
+.media img { max-width: 100%; border-radius: 8px; }
+.price { font-size: 24px; font-weight: bold; color: #e85d04; margin-bottom: 20px; }
 
-.price { font-size: 28px; font-weight: bold; color: #d00000; margin: 15px 0; }
-.ht { font-size: 14px; color: #777; font-weight: normal; margin-left: 10px; }
+.selectors {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    margin: 20px 0;
+    padding: 15px;
+    background: #f8f9fa;
+    border-radius: 8px;
+}
+.select-group { display: flex; flex-direction: column; }
+.select-group label { font-weight: bold; margin-bottom: 5px; color: #555; }
+.select-group select { padding: 10px; border: 1px solid #ccc; border-radius: 4px; }
 
-.section { margin-top: 25px; }
-h3 { font-size: 16px; text-transform: uppercase; color: #555; border-bottom: 1px solid #eee; padding-bottom: 5px; margin-bottom: 10px; }
-
-.tag { display: inline-block; background: #f0f0f0; padding: 4px 10px; border-radius: 20px; font-size: 13px; margin-right: 8px; margin-bottom: 8px; border: 1px solid #ddd; }
-.spec-list { padding-left: 20px; }
-.spec-list li { font-size: 14px; margin-bottom: 5px; color: #444; }
-.desc { line-height: 1.6; color: #333; font-size: 15px; }
-
-hr { border: 0; border-top: 1px solid #eee; margin: 20px 0; }
+.section { margin-top: 20px; }
+.specs ul { list-style: disc; padding-left: 20px; }
+.desc { line-height: 1.5; }
 </style>

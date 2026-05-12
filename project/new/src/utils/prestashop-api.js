@@ -34,27 +34,27 @@ export async function psGet(resource, id = '', queryParams = {}) {
 }
 
 export async function psPost(resource, xmlData) {
-    const response = await axios.post(`${BASE_URL}/${resource}`, xmlData, {
-        params: {
-            ws_key: API_KEY,
-        },
-        headers: {
-            'Content-Type': 'application/xml',
-        },
-    });
-    return response.data;
+  const response = await axios.post(`${BASE_URL}/${resource}`, xmlData, {
+    params: {
+      ws_key: API_KEY,
+    },
+    headers: {
+      'Content-Type': 'application/xml',
+    },
+  });
+  return response.data;
 }
 
 export async function psPut(resource, xmlData) {
-    const response = await axios.put(`${BASE_URL}/${resource}`, xmlData, {
-        params: {
-            ws_key: API_KEY,
-        },
-        headers: {
-            'Content-Type': 'application/xml',
-        },
-    });
-    return response.data;
+  const response = await axios.put(`${BASE_URL}/${resource}`, xmlData, {
+    params: {
+      ws_key: API_KEY,
+    },
+    headers: {
+      'Content-Type': 'application/xml',
+    },
+  });
+  return response.data;
 }
 
 export async function psDelete(resource, id = '', queryParams = {}) {
@@ -213,9 +213,9 @@ export async function psLoginAdmin(email, password) {
   const dbPasswd = getXmlText(employee.passwd);
   let isMatch = false;
   try {
-    if (dbPasswd.startsWith('$2y$') || dbPasswd.startsWith('$2a$')) { 
+    if (dbPasswd.startsWith('$2y$') || dbPasswd.startsWith('$2a$')) {
       isMatch = bcrypt.compareSync(password, dbPasswd);
-    } else {  
+    } else {
       isMatch = (password === dbPasswd);
     }
   } catch (error) {
@@ -326,24 +326,38 @@ export async function psGetProductFullDetails(productId) {
     }));
 
     // --- Variants (Combinations) ---
+    // Dans psGetProductFullDetails, remplace la partie --- Variants --- par ceci :
     const pCombos = [].concat(p.associations?.combinations?.combination || []);
-    const variants = [];
+    const groupedVariants = {}; // Nouvel objet de regroupement
+
     for (const combo of pCombos) {
       const comboDetail = await psGet('combinations', cleanId(combo.id));
       const attrValues = [].concat(comboDetail?.prestashop?.combination?.associations?.product_option_values?.product_option_value || []);
-      const labelParts = await Promise.all(attrValues.map(async (av) => {
+
+      for (const av of attrValues) {
         const attrValData = await psGet('product_option_values', cleanId(av.id));
         const avData = attrValData?.prestashop?.product_option_value;
-        return `${groupMap[cleanId(avData?.id_attribute_group)] || 'Attr'}: ${extractText(avData?.name)}`;
-      }));
-      variants.push(labelParts.join(' / '));
+
+        const groupName = groupMap[cleanId(avData?.id_attribute_group)] || 'Option';
+        const valueName = extractText(avData?.name);
+
+        if (!groupedVariants[groupName]) {
+          groupedVariants[groupName] = new Set(); // Set pour éviter les doublons
+        }
+        groupedVariants[groupName].add(valueName);
+      }
     }
 
-    // ON RETOURNE TOUT : Le produit brut + les labels calculés
+    // Convertir les Sets en Tableaux pour Vue
+    const variants = {};
+    for (const key in groupedVariants) {
+      variants[key] = Array.from(groupedVariants[key]);
+    }
+
     return {
       raw: p,
       features,
-      variants
+      variants // Maintenant un objet { "Taille": [...], "Couleur": [...] }
     };
 
   } catch (error) {
