@@ -97,18 +97,39 @@ const getAllOrderStates = async () => {
 const stateOptions = computed(() => orderStates.value);
 
 /* ===================== FIND STATES ===================== */
+/**
+ * États alignés sur l'import BO : dans le panier, paiement effectué, annulé.
+ * Ordre des mots-clés : du plus spécifique au plus générique.
+ */
 const findStateId = (keywords) => {
     const match = orderStates.value.find((state) => {
         const label = normalize(state.name);
-        return keywords.some((k) => label.includes(k));
+        return keywords.some((k) => label.includes(normalize(k)));
     });
 
     return match ? match.id : null;
 };
 
-const paidStateId = computed(() => findStateId(['paiement', 'pay', 'paid']));
-const failedStateId = computed(() => findStateId(['echec', 'fail', 'failed','error','err']));
-const canceledStateId = computed(() => findStateId(['annul', 'cancel']));
+/** i. Dans le panier */
+const inCartStateId = computed(() =>
+    findStateId(['dans le panier', 'en panier', 'panier', 'cart', 'awaiting'])
+);
+
+/** ii. Paiement effectué */
+const paidStateId = computed(() =>
+    findStateId([
+        'paiement effectué',
+        'paiement effectue',
+        'paiement accepté',
+        'paiement accepte',
+        'payment accepted',
+        'paiement reçu',
+        'paiement recu',
+    ])
+);
+
+/** iii. Annulé */
+const canceledStateId = computed(() => findStateId(['annulé', 'annule', 'annul', 'cancel', 'canceled', 'cancelled']));
 
 /* ===================== CORE SYNC FUNCTION ===================== */
 const setOrderState = async (orderId, stateId) => {
@@ -148,7 +169,10 @@ onMounted(async () => {
 
 <template>
     <div class="container py-4">
-        <h2 class="fw-bold mb-4">Order List</h2>
+        <h2 class="fw-bold mb-2">Commandes</h2>
+        <p class="text-muted small mb-4">
+            États import : <strong>dans le panier</strong> · <strong>paiement effectué</strong> · <strong>annulé</strong>
+        </p>
 
         <div v-if="orders.length" class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4">
 
@@ -168,38 +192,41 @@ onMounted(async () => {
                         </p>
 
                         <p class="text-primary fw-bold">
-                            ${{ order.total_paid }}
+                            {{ order.total_paid }} €
                         </p>
 
                         <p class="text-muted small">
                             {{ order.date_add }}
                         </p>
 
-                        <!-- ================= BUTTONS SYNC ================= -->
+                        <!-- États import : panier → payé → annulé -->
                         <div class="d-flex flex-wrap gap-2 mt-3">
 
                             <button
+                                type="button"
+                                class="btn btn-sm"
+                                :class="orderStateMap[order.id] === inCartStateId ? 'btn-secondary' : 'btn-outline-secondary'"
+                                :disabled="updatingId === order.id || !inCartStateId"
+                                @click="setOrderState(order.id, inCartStateId)"
+                            >
+                                Dans le panier
+                            </button>
+
+                            <button
+                                type="button"
                                 class="btn btn-sm"
                                 :class="orderStateMap[order.id] === paidStateId ? 'btn-success' : 'btn-outline-success'"
-                                :disabled="updatingId === order.id"
+                                :disabled="updatingId === order.id || !paidStateId"
                                 @click="setOrderState(order.id, paidStateId)"
                             >
-                                Paiement OK
+                                Paiement effectué
                             </button>
 
                             <button
-                                class="btn btn-sm"
-                                :class="orderStateMap[order.id] === failedStateId ? 'btn-warning' : 'btn-outline-warning'"
-                                :disabled="updatingId === order.id"
-                                @click="setOrderState(order.id, failedStateId)"
-                            >
-                                Échec
-                            </button>
-
-                            <button
+                                type="button"
                                 class="btn btn-sm"
                                 :class="orderStateMap[order.id] === canceledStateId ? 'btn-danger' : 'btn-outline-danger'"
-                                :disabled="updatingId === order.id"
+                                :disabled="updatingId === order.id || !canceledStateId"
                                 @click="setOrderState(order.id, canceledStateId)"
                             >
                                 Annulé

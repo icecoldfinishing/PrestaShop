@@ -148,6 +148,67 @@ export async function psCount(resource) {
   }
 }
 
+/**
+ * Commandes légères pour stats / tableau de bord (id, montant, date, état).
+ * @returns {Promise<Array<{ id: string, total_paid: number, date_add: string, current_state: string }>>}
+ */
+export async function psGetOrdersLight() {
+  const data = await psGet('orders', '', {
+    display: '[id,total_paid,date_add,current_state]',
+  });
+  const raw = data?.prestashop?.orders?.order;
+  if (!raw) return [];
+  const list = Array.isArray(raw) ? raw : [raw];
+  return list.map((o) => ({
+    id: getXmlText(o.id),
+    total_paid: parseFloat(getXmlText(o.total_paid) || '0') || 0,
+    date_add: getXmlText(o.date_add),
+    current_state: getXmlText(o.current_state),
+  }));
+}
+
+/** Partie date YYYY-MM-DD d'une date PrestaShop (`date_add`). */
+export function psOrderDateKey(dateAdd) {
+  const s = String(dateAdd || '').trim();
+  if (!s) return '';
+  return s.slice(0, 10);
+}
+
+/**
+ * Agrège les commandes par jour + totaux globaux.
+ * @param {Array<{ total_paid: number, date_add: string }>} orders
+ * @returns {{ byDay: Array<{ date: string, count: number, amount: number }>, totals: { count: number, amount: number } }}
+ */
+export function psAggregateOrdersByDay(orders) {
+  const list = Array.isArray(orders) ? orders : [];
+  const map = new Map();
+  for (const o of list) {
+    const day = psOrderDateKey(o.date_add);
+    if (!day) continue;
+    const prev = map.get(day) || { count: 0, amount: 0 };
+    prev.count += 1;
+    prev.amount += Number(o.total_paid) || 0;
+    map.set(day, prev);
+  }
+  const byDay = [...map.entries()]
+    .map(([date, v]) => ({ date, count: v.count, amount: v.amount }))
+    .sort((a, b) => b.date.localeCompare(a.date));
+  const totals = list.reduce(
+    (acc, o) => {
+      acc.count += 1;
+      acc.amount += Number(o.total_paid) || 0;
+      return acc;
+    },
+    { count: 0, amount: 0 }
+  );
+  return { byDay, totals };
+}
+
+/** Données tableau de bord : série par jour + totaux. */
+export async function psGetOrdersDashboardStats() {
+  const orders = await psGetOrdersLight();
+  return psAggregateOrdersByDay(orders);
+}
 
 
 /**

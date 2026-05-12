@@ -141,6 +141,10 @@ const handleFoLogin = () => {
   currentPage.value = PAGE.FO_HOME;
 };
 
+const handleAdminLogin = () => {
+  currentPage.value = PAGE.BO_HOME;
+};
+
 const handleCustomerLogin = () => {
   currentPage.value = PAGE.FO_HOME;
 };
@@ -316,8 +320,8 @@ const switchMode = (newMode) => {
 
         <OrderList v-if="mode === 'BO' && currentPage === PAGE.BO_ORDERS" />
 
-        <Auth v-if="mode === 'BO' && currentPage === PAGE.BO_AUTH"
-              @success="handleCustomerLogin" />
+        <AdminLogin v-if="mode === 'BO' && currentPage === PAGE.BO_AUTH"
+              @success="handleAdminLogin" />
 
         <ApiResponseViewer v-if="mode === 'BO' && currentPage === PAGE.BO_API" />
         <Import v-if="mode === 'BO' && currentPage === PAGE.BO_CSV" />
