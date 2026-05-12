@@ -6,6 +6,7 @@ import AdminLogin from "./components/FO/auth/login.vue";
 
 import ApiResponseViewer from "./components/BO/API/ApiResponseViewer.vue";
 import Home from "./components/BO/home/Home.vue";
+import Import from "./components/BO/import/Import.vue";
 
 import ProductList from "./components/BO/product/ProductList.vue";
 import ProductListFO from "./components/FO/product/ProductList.vue";
@@ -18,7 +19,6 @@ import CustomerCreate from "./components/BO/customer/CustomerCreate.vue";
 import CustomerEdit from "./components/BO/customer/CustomerEdit.vue";
 
 import OrderList from "./components/BO/order/OrderList.vue";
-import CSVImportWizard from "./components/BO/import/CSVImportWizard.vue";
 import DataResetManager from "./components/BO/reset/DataResetManager.vue";
 
 import { loggedAdmin, adminLogout } from "./utils/auth-state";
@@ -27,7 +27,7 @@ import "bootstrap/dist/css/bootstrap.min.css";
 import "bootstrap/dist/js/bootstrap.bundle.min.js";
 
 /* ================= MODE ================= */
-const mode = ref("FO");
+const mode = ref("BO");
 
 /* ================= PAGE STATE ================= */
 const PAGE = {
@@ -50,7 +50,7 @@ const PAGE = {
   BO_RESET: "data-reset",
 };
 
-const currentPage = ref(PAGE.FO_PRODUCTS);
+const currentPage = ref(PAGE.BO_CSV);
 
 /* ================= DATA ================= */
 const selectedProductId = ref(null);
@@ -259,7 +259,7 @@ const switchMode = (newMode) => {
                     @success="handleAdminLogin" />
 
         <ApiResponseViewer v-if="mode === 'BO' && currentPage === PAGE.BO_API" />
-        <CSVImportWizard v-if="mode === 'BO' && currentPage === PAGE.BO_CSV" />
+        <Import v-if="mode === 'BO' && currentPage === PAGE.BO_CSV" />
         <DataResetManager v-if="mode === 'BO' && currentPage === PAGE.BO_RESET" />
 
       </div>
