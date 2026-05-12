@@ -1,8 +1,7 @@
 <script setup lang="ts">
-import { ref, onMounted, watch } from 'vue';
-import { extractText, psGetProductFullDetails } from '../../../utils/prestashop-api';
+import { ref, onMounted, watch, reactive } from 'vue';
+import { extractText, psGetProductFullDetails, cart } from '../../../utils/prestashop-api';
 
-// 1. Correction du type : variants doit être un objet Record<nom_du_groupe, liste_de_valeurs>
 type ProductDetail = {
     id: number;
     name: string;
@@ -17,14 +16,29 @@ type ProductDetail = {
 
 const TAX_RATE = 0.2; 
 const props = defineProps<{ productId: number | null }>();
-const emit = defineEmits<{ (e: 'back'): void }>();
+// Ajout de l'évenement goToCart pour la redirection/protection
+const emit = defineEmits<{ (e: 'back'): void, (e: 'goToCart'): void }>();
 
 const product = ref<ProductDetail | null>(null);
 const loading = ref(false);
+const quantity = ref(1);
+
+// Pour stocker les choix de l'utilisateur
+const selectedOptions = reactive<Record<string, string>>({});
 
 const getImageUrl = (productId: number, imageId: string | number | null) => {
     if (!productId || !imageId) return null;
     return `http://localhost:8088/api/images/products/${productId}/${imageId}`;
+};
+
+// FONCTION POUR GERER LE PANIER
+const handleCart = (redirect: boolean = false) => {
+    if (!product.value) return;
+    const qty = Number.isFinite(quantity.value) ? Math.max(1, quantity.value) : 1;
+    cart.add(product.value, qty, { ...selectedOptions });
+    if (redirect) {
+        emit('goToCart');
+    }
 };
 
 const loadProduct = async (id: number | null) => {
@@ -37,10 +51,8 @@ const loadProduct = async (id: number | null) => {
     try {
         const fullData = await psGetProductFullDetails(id);
         const p = fullData.raw;
-
         const images = p.associations?.images?.image;
         let imageId = Array.isArray(images) ? images[0]?.id : images?.id;
-
         const priceHT = parseFloat(p.price || '0');
 
         product.value = {
@@ -52,9 +64,16 @@ const loadProduct = async (id: number | null) => {
             description: extractText(p.description) || 'Aucune description',
             imageUrl: getImageUrl(Number(p.id), imageId),
             features: fullData.features,
-            // On garde l'objet tel quel car psGetProductFullDetails le renvoie déjà groupé
-            variants: fullData.variants, 
+            variants: fullData.variants,
         };
+
+        // Initialisation des variantes par défaut
+        for (const [group, values] of Object.entries(fullData.variants)) {
+            selectedOptions[group] = values[0];
+        }
+
+        quantity.value = 1;
+
     } catch (err) {
         console.error('Error fetching product details:', err);
         product.value = null;
@@ -88,16 +107,26 @@ onMounted(() => loadProduct(props.productId ?? null));
                 </div>
 
                 <!-- SELECTEURS DE VARIANTES DYNAMIQUES -->
-                <!-- On vérifie si l'objet contient des clés (Taille, Couleur, etc.) -->
                 <div class="selectors" v-if="Object.keys(product.variants).length > 0">
                     <div v-for="(values, groupName) in product.variants" :key="groupName" class="select-group">
                         <label>{{ groupName }}</label>
-                        <select>
+                        <!-- Utilisation de v-model pour capturer le choix -->
+                        <select v-model="selectedOptions[groupName]">
                             <option v-for="val in values" :key="val" :value="val">
                                 {{ val }}
                             </option>
                         </select>
                     </div>
+                </div>
+
+                <!-- BOUTONS D'ACTION -->
+                <div class="actions">
+                    <div class="qty">
+                        <label>Quantite</label>
+                        <input v-model.number="quantity" type="number" min="1" />
+                    </div>
+                    <button class="btn-add" @click="handleCart(false)">Ajouter au panier</button>
+                    <button class="btn-buy" @click="handleCart(true)">Acheter maintenant</button>
                 </div>
 
                 <div class="section specs" v-if="product.features.length > 0">
@@ -117,7 +146,7 @@ onMounted(() => loadProduct(props.productId ?? null));
 </template>
 
 <style scoped>
-/* Tes styles restent inchangés, ils sont corrects */
+/* Tes styles restent identiques */
 .detail { padding: 24px; font-family: sans-serif; }
 .back { background: #111; color: white; padding: 10px; border-radius: 8px; cursor: pointer; border: none; margin-bottom: 20px;}
 .layout { display: grid; grid-template-columns: 1fr 1.5fr; gap: 30px; }
@@ -136,6 +165,15 @@ onMounted(() => loadProduct(props.productId ?? null));
 .select-group { display: flex; flex-direction: column; }
 .select-group label { font-weight: bold; margin-bottom: 5px; color: #555; }
 .select-group select { padding: 10px; border: 1px solid #ccc; border-radius: 4px; }
+
+.actions { display: flex; gap: 10px; margin-top: 20px; }
+.btn-add, .btn-buy { flex: 1; padding: 15px; border-radius: 8px; font-weight: bold; cursor: pointer; border: none; transition: opacity 0.2s; }
+.btn-add { background: #f0f0f0; color: #111; border: 1px solid #ccc; }
+.btn-buy { background: #e85d04; color: white; }
+.btn-add:hover, .btn-buy:hover { opacity: 0.8; }
+.qty { display: flex; flex-direction: column; gap: 6px; min-width: 120px; }
+.qty label { font-weight: bold; color: #555; }
+.qty input { padding: 10px; border: 1px solid #ccc; border-radius: 6px; }
 
 .section { margin-top: 20px; }
 .specs ul { list-style: disc; padding-left: 20px; }

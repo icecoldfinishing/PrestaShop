@@ -1,3 +1,4 @@
+import { reactive, computed } from "vue";
 import axios from 'axios';
 import { XMLBuilder, XMLParser } from 'fast-xml-parser';
 import bcrypt from 'bcryptjs';
@@ -14,6 +15,7 @@ const parser = new XMLParser({
 });
 
 const builder = new XMLBuilder();
+const CART_STORAGE_KEY = 'fo_cart';
 
 export async function psGet(resource, id = '', queryParams = {}) {
   const resourcePath =
@@ -364,4 +366,119 @@ export async function psGetProductFullDetails(productId) {
     console.error("Error in psGetProductFullDetails:", error);
     throw error;
   }
+}
+
+const loadCartState = () => {
+  try {
+    const raw = localStorage.getItem(CART_STORAGE_KEY);
+    if (!raw) return { items: [], total: 0, count: 0 };
+    const parsed = JSON.parse(raw);
+    if (!parsed || !Array.isArray(parsed.items)) {
+      return { items: [], total: 0, count: 0 };
+    }
+    return {
+      items: parsed.items,
+      total: Number(parsed.total) || 0,
+      count: Number(parsed.count) || 0,
+    };
+  } catch {
+    return { items: [], total: 0, count: 0 };
+  }
+};
+
+const persistCart = (state) => {
+  localStorage.setItem(CART_STORAGE_KEY, JSON.stringify({
+    items: state.items,
+    total: Number(state.total) || 0,
+    count: Number(state.count) || 0,
+  }));
+};
+
+const initialCart = loadCartState();
+
+export const cart = reactive({
+  items: initialCart.items,
+  total: initialCart.total,
+  count: initialCart.count,
+
+  add(product, quantity = 1, variants = {}) {
+    // On crée une clé unique pour gérer les mêmes produits avec des variantes différentes
+    const variantKey = Object.values(variants).join('-');
+    const cartId = `${product.id}-${variantKey}`;
+
+    const existingItem = this.items.find(item => item.cartId === cartId);
+
+    const qty = Number.isFinite(quantity) ? Math.max(1, quantity) : 1;
+
+    if (existingItem) {
+      existingItem.quantity += qty;
+    } else {
+      this.items.push({
+        cartId,
+        id: product.id,
+        name: product.name,
+        price: product.priceTTC,
+        imageUrl: product.imageUrl,
+        variants: variants,
+        quantity: qty
+      });
+    }
+    this.updateTotals();
+  },
+
+  remove(cartId) {
+    this.items = this.items.filter(item => item.cartId !== cartId);
+    this.updateTotals();
+  },
+
+  setQuantity(cartId, quantity) {
+    const qty = Number.isFinite(quantity) ? Math.max(1, quantity) : 1;
+    const item = this.items.find(entry => entry.cartId === cartId);
+    if (!item) return;
+    item.quantity = qty;
+    this.updateTotals();
+  },
+
+  updateTotals() {
+    this.total = this.items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+    this.count = this.items.reduce((sum, item) => sum + item.quantity, 0);
+    persistCart(this);
+  },
+
+  clear() {
+    this.items = [];
+    this.updateTotals();
+  }
+});
+
+if (cart.items.length) {
+  cart.updateTotals();
+}
+
+export async function psCreateCart(customerId, items) {
+  const cartData = {
+    prestashop: {
+      cart: {
+        id_customer: customerId,
+        id_currency: 1, 
+        id_lang: 1,
+        associations: {
+          cart_rows: {
+            // PrestaShop attend une liste d'objets cart_row
+            cart_row: items.map(item => ({
+              id_product: item.id,
+              id_product_attribute: item.id_attribute || 0,
+              id_address_delivery: 0, // À mettre à jour lors du checkout
+              quantity: item.quantity
+            }))
+          }
+        }
+      }
+    }
+  };
+
+  // Note : PrestaShop est très sensible aux balises vides. 
+  // Si id_product_attribute est 0, il faut s'assurer qu'il est envoyé.
+  const xml = builder.build(cartData);
+  return psPost('carts', xml);
 }

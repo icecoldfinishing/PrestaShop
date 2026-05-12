@@ -1,8 +1,8 @@
 <script setup>
 import { ref, computed } from "vue";
 
-import Auth from "./components/BO/auth/auth.vue";
-import AdminLogin from "./components/FO/auth/login.vue";
+import AdminLogin from "./components/BO/auth/auth.vue";
+import CustomerLogin from "./components/FO/auth/login.vue";
 
 import ApiResponseViewer from "./components/BO/API/ApiResponseViewer.vue";
 import Home from "./components/BO/home/Home.vue";
@@ -11,7 +11,7 @@ import HomeFO from "./components/FO/home/Home.vue";
 
 import ProductList from "./components/BO/product/ProductList.vue";
 import ProductDetailFO from "./components/FO/product/ProductDetail.vue";
-
+import Cart from "./components/FO/cart/Cart.vue";
 
 import ProductCreate from "./components/BO/product/ProductCreate.vue";
 import ProductEdit from "./components/BO/product/ProductEdit.vue";
@@ -23,7 +23,7 @@ import CustomerEdit from "./components/BO/customer/CustomerEdit.vue";
 import OrderList from "./components/BO/order/OrderList.vue";
 import DataResetManager from "./components/BO/reset/DataResetManager.vue";
 
-import { loggedAdmin, adminLogout } from "./utils/auth-state";
+import { loggedCustomer, logout, loggedAdmin, adminLogout } from "./utils/auth-state";
 
 import "bootstrap/dist/css/bootstrap.min.css";
 import "bootstrap/dist/js/bootstrap.bundle.min.js";
@@ -37,6 +37,7 @@ const PAGE = {
   FO_PRODUCTS: "products-list-fo",
   FO_PRODUCT_DETAIL: "fo-product-detail",
   FO_LOGIN: "fo-login",
+  FO_CART: "fo-cart",
 
   BO_HOME: "home",
   BO_PRODUCTS: "products-list",
@@ -54,7 +55,7 @@ const PAGE = {
   BO_RESET: "data-reset",
 };
 
-const currentPage = ref(PAGE.FO_HOME);
+const currentPage = ref(PAGE.FO_LOGIN);
 
 /* ================= DATA ================= */
 const selectedProductId = ref(null);
@@ -63,6 +64,16 @@ const selectedFoProductId = ref(null);
 
 /* ================= SECURITY ================= */
 const isAdmin = computed(() => !!loggedAdmin.value);
+const isCustomer = computed(() => !!loggedCustomer.value);
+
+/* ================= GUARD FO ================= */
+const requireCustomer = (nextPage) => {
+  if (!isCustomer.value) {
+    currentPage.value = PAGE.FO_LOGIN;
+    return;
+  }
+  currentPage.value = nextPage;
+};
 
 /* ================= PRODUCTS ================= */
 const openEditProduct = (id) => {
@@ -71,9 +82,7 @@ const openEditProduct = (id) => {
 };
 
 const closeEditProduct = () => {
-  currentPage.value =
-    mode.value === "FO" ? PAGE.FO_PRODUCTS : PAGE.BO_PRODUCTS;
-
+  currentPage.value = mode.value === "FO" ? PAGE.FO_PRODUCTS : PAGE.BO_PRODUCTS;
   selectedProductId.value = null;
 };
 
@@ -88,7 +97,7 @@ const closeEditCustomer = () => {
   selectedCustomerId.value = null;
 };
 
-/* ================= FO LOGIN ================= */
+/* ================= FO ================= */
 const openFoLogin = () => {
   currentPage.value = PAGE.FO_LOGIN;
 };
@@ -103,9 +112,26 @@ const closeFoProduct = () => {
   selectedFoProductId.value = null;
 };
 
-/* ================= ADMIN ================= */
-const handleAdminLogin = () => {
-  currentPage.value = PAGE.BO_HOME;
+const goToCart = () => {
+  requireCustomer(PAGE.FO_CART);
+};
+
+const goToHomeFO = () => {
+  requireCustomer(PAGE.FO_HOME);
+};
+
+const handleCustomerLogout = () => {
+  logout();
+  currentPage.value = PAGE.FO_LOGIN;
+};
+
+/* ================= LOGIN SUCCESS ================= */
+const handleFoLogin = () => {
+  currentPage.value = PAGE.FO_HOME;
+};
+
+const handleCustomerLogin = () => {
+  currentPage.value = PAGE.FO_HOME;
 };
 
 const handleAdminLogout = () => {
@@ -113,12 +139,12 @@ const handleAdminLogout = () => {
   currentPage.value = PAGE.BO_AUTH;
 };
 
-/* ================= NAV FROM HOME ================= */
+/* ================= NAV ================= */
 const handleHomeNavigate = (page) => {
   currentPage.value = page;
 };
 
-/* ================= MODE SWITCH ================= */
+/* ================= MODE ================= */
 const switchMode = (newMode) => {
   mode.value = newMode;
 
@@ -135,17 +161,22 @@ const switchMode = (newMode) => {
 <template>
   <div class="d-flex flex-column vh-100">
 
-    <!-- ================= FO NAVBAR ================= -->
+    <!-- ================= FO NAV ================= -->
     <nav v-if="mode === 'FO'" class="navbar navbar-dark bg-dark px-3">
       <span class="navbar-brand fw-bold">Shop</span>
 
       <div class="d-flex gap-2">
         <button class="btn btn-outline-light btn-sm"
-                @click="currentPage = 'fo-home'">
+                @click="goToHomeFO">
           Accueil
         </button>
 
         <button class="btn btn-outline-light btn-sm"
+                @click="goToCart">
+          Panier
+        </button>
+
+        <button class="btn btn-light btn-sm"
                 @click="switchMode('BO')">
           Admin
         </button>
@@ -155,102 +186,89 @@ const switchMode = (newMode) => {
     <div class="d-flex flex-grow-1">
 
       <!-- ================= BO SIDEBAR ================= -->
-      <div v-if="mode === 'BO'"
-           class="bg-dark text-white d-flex flex-column"
-           style="width: 260px;">
+      <div v-if="mode === 'BO'" class="bg-dark text-white d-flex flex-column" style="width: 260px;">
 
-        <!-- HEADER -->
         <div class="p-3 border-bottom border-secondary">
-
           <h5 class="text-center mb-3">Admin Panel</h5>
 
-          <button class="btn btn-sm btn-outline-light w-100 d-flex align-items-center justify-content-center gap-2"
+          <button class="btn btn-sm btn-outline-light w-100"
                   @click="switchMode('FO')">
-            <i class="bi bi-arrow-left-circle"></i>
             Retour boutique
           </button>
-
         </div>
 
-        <!-- AUTH -->
         <div class="p-3 border-bottom border-secondary">
-
           <div v-if="!isAdmin">
             <button class="btn btn-primary w-100"
-                    @click="currentPage = 'auth'">
-              <i class="bi bi-shield-lock me-1"></i>
+                    @click="currentPage = PAGE.BO_AUTH">
               Login Admin
             </button>
           </div>
 
-          <div v-else class="d-flex justify-content-between align-items-center">
-
-            <div class="text-truncate">
-              <div class="small fw-bold">{{ loggedAdmin.email }}</div>
-            </div>
-
-            <button class="btn btn-sm btn-outline-danger"
-                    @click="handleAdminLogout">
-              <i class="bi bi-box-arrow-right"></i>
-            </button>
-
+          <div v-else class="d-flex justify-content-between">
+            <div class="small">{{ loggedAdmin.email }}</div>
+            <button class="btn btn-sm btn-danger"
+                    @click="handleAdminLogout">X</button>
           </div>
         </div>
 
-        <!-- NAV -->
-        <div v-if="isAdmin" class="flex-grow-1 p-2">
+        <div v-if="isAdmin" class="p-2">
+          <a class="nav-link text-white"
+             :class="{ 'bg-primary': currentPage === PAGE.BO_HOME }"
+             @click="currentPage = PAGE.BO_HOME">Home</a>
 
-          <div class="nav flex-column gap-1">
+          <a class="nav-link text-white"
+             :class="{ 'bg-primary': currentPage === PAGE.BO_PRODUCTS }"
+             @click="currentPage = PAGE.BO_PRODUCTS">Products</a>
 
-            <a class="nav-link text-white"
-               :class="{ 'active bg-primary': currentPage === PAGE.BO_HOME }"
-               @click="currentPage = PAGE.BO_HOME">
-              <i class="bi bi-house me-2"></i> Home
-            </a>
+          <a class="nav-link text-white"
+             :class="{ 'bg-primary': currentPage === PAGE.BO_CUSTOMERS }"
+             @click="currentPage = PAGE.BO_CUSTOMERS">Customers</a>
 
-            <a class="nav-link text-white"
-               :class="{ 'active bg-primary': currentPage === PAGE.BO_PRODUCTS }"
-               @click="currentPage = PAGE.BO_PRODUCTS">
-              <i class="bi bi-box me-2"></i> Products
-            </a>
-
-            <a class="nav-link text-white"
-               :class="{ 'active bg-primary': currentPage === PAGE.BO_CUSTOMERS }"
-               @click="currentPage = PAGE.BO_CUSTOMERS">
-              <i class="bi bi-people me-2"></i> Customers
-            </a>
-
-            <a class="nav-link text-white"
-               :class="{ 'active bg-primary': currentPage === PAGE.BO_ORDERS }"
-               @click="currentPage = PAGE.BO_ORDERS">
-              <i class="bi bi-receipt me-2"></i> Orders
-            </a>
-
-          </div>
-
+          <a class="nav-link text-white"
+             :class="{ 'bg-primary': currentPage === PAGE.BO_ORDERS }"
+             @click="currentPage = PAGE.BO_ORDERS">Orders</a>
         </div>
-
       </div>
 
       <!-- ================= MAIN ================= -->
-      <div class="flex-grow-1 overflow-auto bg-light p-4">
+      <div class="flex-grow-1 p-4 bg-light">
 
-        <!-- FO -->
+        <!-- ================= FO LOGIN ================= -->
+        <CustomerLogin
+          v-if="mode === 'FO' && currentPage === PAGE.FO_LOGIN"
+          @success="handleFoLogin"
+        />
 
+        <!-- ================= FO AdminLogin STATUS ================= -->
+        <div v-if="mode === 'FO' && isCustomer"
+             class="alert alert-success d-flex justify-content-between">
+
+          <div>
+            Connecté : <b>{{ loggedCustomer.firstname }} {{ loggedCustomer.lastname }}</b>
+          </div>
+
+          <button class="btn btn-sm btn-danger" @click="handleCustomerLogout">Logout</button>
+        </div>
+
+        <!-- ================= FO ================= -->
         <HomeFO
-          v-if="mode === 'FO' && currentPage === PAGE.FO_HOME"
+          v-if="mode === 'FO' && currentPage === PAGE.FO_HOME && isCustomer"
           @view="openFoProduct"
         />
 
         <ProductDetailFO
-          v-if="mode === 'FO' && currentPage === PAGE.FO_PRODUCT_DETAIL"
+          v-if="mode === 'FO' && currentPage === PAGE.FO_PRODUCT_DETAIL && isCustomer"
           :product-id="selectedFoProductId"
           @back="closeFoProduct"
+          @go-to-cart="goToCart"
         />
 
-        <Auth v-if="mode === 'FO' && currentPage === PAGE.FO_LOGIN" />
+        <Cart
+          v-if="mode === 'FO' && currentPage === PAGE.FO_CART && isCustomer"
+        />
 
-        <!-- BO -->
+        <!-- ================= BO ================= -->
         <Home v-if="mode === 'BO' && currentPage === PAGE.BO_HOME"
               @navigate="handleHomeNavigate" />
 
@@ -277,15 +295,14 @@ const switchMode = (newMode) => {
 
         <OrderList v-if="mode === 'BO' && currentPage === PAGE.BO_ORDERS" />
 
-        <AdminLogin v-if="mode === 'BO' && currentPage === PAGE.BO_AUTH"
-                    @success="handleAdminLogin" />
+        <Auth v-if="mode === 'BO' && currentPage === PAGE.BO_AUTH"
+              @success="handleCustomerLogin" />
 
         <ApiResponseViewer v-if="mode === 'BO' && currentPage === PAGE.BO_API" />
         <Import v-if="mode === 'BO' && currentPage === PAGE.BO_CSV" />
         <DataResetManager v-if="mode === 'BO' && currentPage === PAGE.BO_RESET" />
 
       </div>
-
     </div>
   </div>
 </template>
@@ -295,14 +312,10 @@ const switchMode = (newMode) => {
   padding: 10px;
   border-radius: 6px;
   margin: 2px 6px;
+  cursor: pointer;
 }
 
 .nav-link:hover {
-  background: rgba(255, 255, 255, 0.1);
-}
-
-.nav-link.active {
-  background: #0d6efd !important;
-  color: white !important;
+  background: rgba(255,255,255,0.1);
 }
 </style>
