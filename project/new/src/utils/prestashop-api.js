@@ -39,21 +39,62 @@ export async function psGet(resource, id = '', queryParams = {}) {
     headers: {
       Accept: 'application/xml',
     },
+    responseType: 'text',
   });
 
   return parser.parse(response.data);
 }
 
+/** Lit les <error> de la réponse XML PrestaShop (API). */
+export function extractPrestaShopErrorsFromXml(xmlText) {
+  if (!xmlText || typeof xmlText !== 'string') return '';
+  try {
+    const doc = new DOMParser().parseFromString(xmlText, 'text/xml');
+    const errors = doc.getElementsByTagName('error');
+    const parts = [];
+    for (let i = 0; i < errors.length; i++) {
+      const err = errors[i];
+      const code = err.getElementsByTagName('code')[0]?.textContent?.trim();
+      const message = err.getElementsByTagName('message')[0]?.textContent?.trim();
+      const chunk = [code && `code ${code}`, message].filter(Boolean).join(': ');
+      if (chunk) parts.push(chunk);
+    }
+    return parts.join(' | ');
+  } catch {
+    return '';
+  }
+}
+
 export async function psPost(resource, xmlData) {
-  const response = await axios.post(`${BASE_URL}/${resource}`, xmlData, {
-    params: {
-      ws_key: API_KEY,
-    },
-    headers: {
-      'Content-Type': 'application/xml',
-    },
-  });
-  return response.data;
+  try {
+    const response = await axios.post(`${BASE_URL}/${resource}`, xmlData, {
+      params: {
+        ws_key: API_KEY,
+      },
+      headers: {
+        'Content-Type': 'application/xml',
+      },
+      responseType: 'text',
+    });
+    const body = typeof response.data === 'string' ? response.data : String(response.data ?? '');
+    if (body.includes('<errors')) {
+      const msg = extractPrestaShopErrorsFromXml(body) || body.slice(0, 1200);
+      throw new Error(`PrestaShop (${resource}): ${msg}`);
+    }
+    return body;
+  } catch (e) {
+    if (typeof axios.isAxiosError === 'function' && axios.isAxiosError(e) && e.response?.data != null) {
+      const raw = e.response.data;
+      const str = typeof raw === 'string' ? raw : String(raw);
+      const psMsg = extractPrestaShopErrorsFromXml(str);
+      if (psMsg) {
+        e.message = `${e.message || 'Erreur HTTP'} — ${psMsg}`;
+      } else if (str && str.length && str.length < 2500) {
+        e.message = `${e.message || 'Erreur HTTP'} — ${str}`;
+      }
+    }
+    throw e;
+  }
 }
 
 export async function psPut(resource, xmlData) {
@@ -64,6 +105,7 @@ export async function psPut(resource, xmlData) {
     headers: {
       'Content-Type': 'application/xml',
     },
+    responseType: 'text',
   });
   return response.data;
 }
@@ -281,15 +323,26 @@ export function getXmlText(value) {
 }
 
 export function getXmlId(xml) {
-  if (!xml || typeof xml !== 'string') return '';
-  const doc = new DOMParser().parseFromString(xml, 'text/xml');
-  return doc.getElementsByTagName('id')[0]?.textContent || '';
+  if (xml == null) return '';
+  const str = typeof xml === 'string' ? xml : String(xml);
+  if (!str.trim()) return '';
+  const doc = new DOMParser().parseFromString(str, 'text/xml');
+  const orderId = doc.querySelector('prestashop > order > id')?.textContent?.trim();
+  if (orderId) return orderId;
+  return doc.getElementsByTagName('id')[0]?.textContent?.trim() || '';
 }
 
 export async function psGetCustomerSecureKey(customerId) {
   if (!customerId) return '';
   const data = await psGet('customers', customerId, { display: '[id,secure_key]' });
   return getXmlText(data?.prestashop?.customer?.secure_key) || '';
+}
+
+/** Clé de sécurité du panier — obligatoire sur une commande liée à ce panier (pas la clé client). */
+export async function psGetCartSecureKey(cartId) {
+  if (!cartId) return '';
+  const data = await psGet('carts', cartId, { display: '[id,secure_key]' });
+  return getXmlText(data?.prestashop?.cart?.secure_key) || '';
 }
 
 export async function psEnsureCustomerAddress(customer, defaults = {}) {
@@ -489,6 +542,7 @@ export const cart = reactive({
         cartId,
         id: product.id,
         name: product.name,
+        reference: product.reference,
         price: product.priceTTC,
         imageUrl: product.imageUrl,
         variants: variants,
@@ -560,12 +614,123 @@ export async function psCreateCart(customerId, items, addressId) {
   return getXmlId(response);
 }
 
+/**
+ * Lignes commande + totaux depuis le panier boutique (prix FO).
+ * Chaque élément : productId, productAttributeId?, quantity, name?, reference?, unitPriceTaxIncl?, unitPriceTaxExcl?.
+ */
+export function psBuildOrderRowsFromLineItems(lineItems) {
+  const list = Array.isArray(lineItems) ? lineItems : [];
+  let rowsXml = '';
+  let sumWt = 0;
+  let sumHt = 0;
+
+  for (const li of list) {
+    const qty = Math.max(1, Number(li.quantity) || 1);
+    const incl = Number(li.unitPriceTaxIncl);
+    const inclSafe = Number.isFinite(incl) ? incl : 0;
+    const exclRaw = li.unitPriceTaxExcl;
+    const excl = Number.isFinite(Number(exclRaw)) ? Number(exclRaw) : inclSafe;
+    const pid = cleanId(li.productId ?? li.id);
+    const attr = cleanId(li.productAttributeId ?? li.id_attribute ?? 0) || '0';
+    const name = (li.name || 'Produit').replace(/]]>/g, '');
+    const ref = String(li.reference || '').replace(/]]>/g, '');
+
+    sumWt += inclSafe * qty;
+    sumHt += excl * qty;
+
+    rowsXml += `
+      <order_row>
+        <product_id>${pid}</product_id>
+        <product_attribute_id>${attr}</product_attribute_id>
+        <product_quantity>${qty}</product_quantity>
+        <product_name><![CDATA[${name}]]></product_name>
+        <product_reference><![CDATA[${ref}]]></product_reference>
+        <product_price>${excl.toFixed(6)}</product_price>
+        <unit_price_tax_incl>${inclSafe.toFixed(6)}</unit_price_tax_incl>
+        <unit_price_tax_excl>${excl.toFixed(6)}</unit_price_tax_excl>
+      </order_row>`;
+  }
+
+  return {
+    rowsXml,
+    totalPaidWt: sumWt,
+    totalProducts: sumHt,
+    totalProductsWt: sumWt,
+  };
+}
+
+/**
+ * Lignes commande + totaux depuis le panier PrestaShop (GET cart full + prix catalogue).
+ */
+export async function psBuildOrderRowsFromCartWebService(cartId) {
+  const data = await psGet('carts', cartId, { display: 'full' });
+  const c = data?.prestashop?.cart;
+  if (!c) {
+    throw new Error(`Panier #${cartId} introuvable (API).`);
+  }
+
+  const rawRows = [].concat(c?.associations?.cart_rows?.cart_row || []).filter(Boolean);
+  if (!rawRows.length) {
+    throw new Error(`Panier #${cartId} sans lignes (cart_rows).`);
+  }
+
+  let rowsXml = '';
+  let sumWt = 0;
+  let sumHt = 0;
+
+  for (const row of rawRows) {
+    const pid = cleanId(row.id_product);
+    const attr = cleanId(row.id_product_attribute) || '0';
+    const qty = Math.max(1, parseInt(getXmlText(row.quantity), 10) || 1);
+
+    const pRes = await psGet('products', pid, { display: '[id,price,reference,name]' });
+    const p = pRes?.prestashop?.product;
+    if (!p) {
+      throw new Error(`Produit #${pid} introuvable pour le panier #${cartId}.`);
+    }
+
+    const name = extractText(p.name) || 'Produit';
+    const ref = getXmlText(p.reference) || '';
+    const priceHt = Number.parseFloat(getXmlText(p.price) || '0') || 0;
+    const priceTtc = priceHt;
+
+    sumWt += priceTtc * qty;
+    sumHt += priceHt * qty;
+
+    rowsXml += `
+      <order_row>
+        <product_id>${pid}</product_id>
+        <product_attribute_id>${attr}</product_attribute_id>
+        <product_quantity>${qty}</product_quantity>
+        <product_name><![CDATA[${name.replace(/]]>/g, '')}]]></product_name>
+        <product_reference><![CDATA[${ref.replace(/]]>/g, '')}]]></product_reference>
+        <product_price>${priceHt.toFixed(6)}</product_price>
+        <unit_price_tax_incl>${priceTtc.toFixed(6)}</unit_price_tax_incl>
+        <unit_price_tax_excl>${priceHt.toFixed(6)}</unit_price_tax_excl>
+      </order_row>`;
+  }
+
+  return {
+    rowsXml,
+    totalPaidWt: sumWt,
+    totalProducts: sumHt,
+    totalProductsWt: sumWt,
+  };
+}
+
+
+/**
+ * Crée une commande PrestaShop. `secureKey` = clé du panier (GET carts).
+ * Lignes : `orderRowsXml` si fourni, sinon `lineItems`, sinon relecture GET panier + produits.
+ */
 export async function psCreateOrder({
   cartId,
   customerId,
   addressId,
   total,
   secureKey,
+  orderRowsXml,
+  lineItems,
   carrierId = DEFAULT_CARRIER_ID,
   currencyId = DEFAULT_CURRENCY_ID,
   langId = DEFAULT_LANG_ID,
@@ -575,9 +740,35 @@ export async function psCreateOrder({
   paymentName = COD_PAYMENT,
   stateId = COD_STATE_ID,
 }) {
-  const safeTotal = Number(total) ? Number(total).toFixed(6) : '0.000000';
+  const key = (secureKey || '').trim();
 
-  const xml = `<prestashop><order>
+  let rowsInner = orderRowsXml && String(orderRowsXml).trim();
+  let totalWt;
+  let totalHt;
+
+  if (rowsInner) {
+    const fallback = Number(total) && Number(total) > 0 ? Number(total).toFixed(6) : '1.000000';
+    totalWt = fallback;
+    totalHt = fallback;
+  } else if (lineItems && lineItems.length) {
+    const built = psBuildOrderRowsFromLineItems(lineItems);
+    rowsInner = built.rowsXml;
+    totalWt = built.totalProductsWt.toFixed(6);
+    totalHt = built.totalProducts.toFixed(6);
+  } else {
+    const built = await psBuildOrderRowsFromCartWebService(cartId);
+    rowsInner = built.rowsXml;
+    totalWt = built.totalProductsWt.toFixed(6);
+    totalHt = built.totalProducts.toFixed(6);
+  }
+
+  const associationsBlock = rowsInner
+    ? `<associations><order_rows>${rowsInner}</order_rows></associations>`
+    : '';
+
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<prestashop xmlns:xlink="http://www.w3.org/1999/xlink">
+  <order>
     <id_address_delivery>${addressId}</id_address_delivery>
     <id_address_invoice>${addressId}</id_address_invoice>
     <id_cart>${cartId}</id_cart>
@@ -589,46 +780,52 @@ export async function psCreateOrder({
     <id_shop_group>${shopGroupId}</id_shop_group>
 
     <current_state>${stateId}</current_state>
-    <module>${paymentModule}</module>
-    <payment>${paymentName}</payment>
+    <module><![CDATA[${paymentModule}]]></module>
+    <payment><![CDATA[${paymentName}]]></payment>
 
+    <valid>0</valid>
+    <invoice_number>0</invoice_number>
+    <delivery_number>0</delivery_number>
     <recyclable>0</recyclable>
     <gift>0</gift>
     <gift_message></gift_message>
     <mobile_theme>0</mobile_theme>
 
-    <valid>0</valid>
-    <invoice_number>0</invoice_number>
-    <delivery_number>0</delivery_number>
+    <total_paid>${totalWt}</total_paid>
+    <total_paid_real>${totalWt}</total_paid_real>
+    <total_paid_tax_incl>${totalWt}</total_paid_tax_incl>
+    <total_paid_tax_excl>${totalHt}</total_paid_tax_excl>
 
-    <total_paid>${safeTotal}</total_paid>
-    <total_paid_real>${safeTotal}</total_paid_real>
-    <total_paid_tax_incl>${safeTotal}</total_paid_tax_incl>
-    <total_paid_tax_excl>${safeTotal}</total_paid_tax_excl>
+    <total_products>${totalHt}</total_products>
+    <total_products_wt>${totalWt}</total_products_wt>
 
-    <total_products>${safeTotal}</total_products>
-    <total_products_wt>${safeTotal}</total_products_wt>
+    <total_shipping>0.000000</total_shipping>
+    <total_shipping_tax_incl>0.000000</total_shipping_tax_incl>
+    <total_shipping_tax_excl>0.000000</total_shipping_tax_excl>
 
-    <total_shipping>0</total_shipping>
-    <total_shipping_tax_incl>0</total_shipping_tax_incl>
-    <total_shipping_tax_excl>0</total_shipping_tax_excl>
+    <total_discounts>0.000000</total_discounts>
+    <total_discounts_tax_incl>0.000000</total_discounts_tax_incl>
+    <total_discounts_tax_excl>0.000000</total_discounts_tax_excl>
 
-    <total_discounts>0</total_discounts>
-    <total_discounts_tax_incl>0</total_discounts_tax_incl>
-    <total_discounts_tax_excl>0</total_discounts_tax_excl>
+    <total_wrapping>0.000000</total_wrapping>
+    <total_wrapping_tax_incl>0.000000</total_wrapping_tax_incl>
+    <total_wrapping_tax_excl>0.000000</total_wrapping_tax_excl>
 
-    <total_wrapping>0</total_wrapping>
-    <total_wrapping_tax_incl>0</total_wrapping_tax_incl>
-    <total_wrapping_tax_excl>0</total_wrapping_tax_excl>
-
-    <carrier_tax_rate>0</carrier_tax_rate>
-    <conversion_rate>1</conversion_rate>
+    <carrier_tax_rate>0.000000</carrier_tax_rate>
+    <conversion_rate>1.000000</conversion_rate>
     <round_mode>2</round_mode>
     <round_type>2</round_type>
 
-    <secure_key>${secureKey || ''}</secure_key>
-  </order></prestashop>`;
+    <secure_key><![CDATA[${key}]]></secure_key>
+    ${associationsBlock}
+  </order>
+</prestashop>`;
 
   const response = await psPost('orders', xml);
-  return getXmlId(response);
+  const id = getXmlId(response);
+  if (!id) {
+    const errBody = extractPrestaShopErrorsFromXml(typeof response === 'string' ? response : String(response));
+    throw new Error(errBody || 'Réponse POST /orders sans id commande (XML inattendu).');
+  }
+  return id;
 }
