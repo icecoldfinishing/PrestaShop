@@ -3,265 +3,192 @@ import { ref } from 'vue'
 import axios from 'axios'
 import { XMLParser } from 'fast-xml-parser'
 
-/* ---------------- CONFIG ---------------- */
+/* ---------------- CONFIG API ---------------- */
 const API_KEY = import.meta.env.VITE_PRESTASHOP_API_KEY;
 const BASE_URL = import.meta.env.VITE_PRESTASHOP_BASE_URL || '/api';
 
 const parser = new XMLParser({
     ignoreAttributes: false,
     attributeNamePrefix: '@_',
-    parseTagValue: true,
-    parseAttributeValue: true,
 })
 
-const sleep = (ms: number) => new Promise(res => setTimeout(res, ms));
-
-/* ---------------- API WRAPPERS ---------------- */
-async function localPsGet(resource: string, id = '', params = {}) {
-    const url = `${BASE_URL}/${id ? `${resource}/${id}` : resource}`
-    const res = await axios.get(url, {
-        params: {
-            ws_key: API_KEY,
-            output_format: 'XML',
-            ...params
-        },
-        headers: { Accept: 'application/xml' }
-    })
-    return parser.parse(res.data)
-}
-
-async function localPsPost(resource: string, xml: string) {
-    const res = await axios.post(`${BASE_URL}/${resource}`, xml, {
-        params: { ws_key: API_KEY },
-        headers: {
-            'Content-Type': 'application/xml',
-            'Accept': 'application/xml'
-        }
-    })
-    return res.data
-}
-
-async function localPsPut(resource: string, xml: string) {
-    const res = await axios.put(`${BASE_URL}/${resource}`, xml, {
-        params: { ws_key: API_KEY },
-        headers: {
-            'Content-Type': 'application/xml',
-            'Accept': 'application/xml'
-        }
-    })
-    return res.data
-}
-
-function getXmlText(value: any) {
-    if (!value) return ''
-    if (typeof value === 'object') return value['#text'] ?? String(value)
-    return String(value)
-}
+/* ---------------- DATA DE TEST ---------------- */
+const TEST_DATA = [
+    {
+        date: "09/05/2026",
+        nom: "Rakoto",
+        email: "rakoto@yopmail.com",
+        pwd: "XvzsX5O0!GBD0uXQ",
+        adresse: "Andoharanofotsy",
+        achats: [{ ref: "T_01", qty: 3, declinaison: "ngoza" }],
+        etat: "en attente paiement à la livraison"
+    },
+    {
+        date: "16/04/2026",
+        nom: "Rajao",
+        email: "rajao1970@yopmail.com",
+        pwd: "BAC?UoxjQIW;Na8ix",
+        adresse: "Analakely",
+        achats: [
+            { ref: "T_01", qty: 2, declinaison: "kely" },
+            { ref: "C_03", qty: 1, declinaison: "" }
+        ],
+        etat: "paiement accepté"
+    }
+];
 
 /* ---------------- STATE ---------------- */
-const loading = ref(false)
-const logs = ref<string[]>([])
-const reference = ref('T_01')
+const logs = ref<string[]>([]);
+const loading = ref(false);
+const log = (m: string) => logs.value.push(`[${new Date().toLocaleTimeString()}] ${m}`);
 
-const rows = ref([
-    { spec: 'taille', value: 'ngoza', stock: 13, price: 12.5 },
-    { spec: 'taille', value: 'kely', stock: 10, price: 15 }
-])
-
-const log = (m: string) => {
-    logs.value.unshift(m)
-    console.log(m)
+/* ---------------- API ENGINE ---------------- */
+async function psRequest(method: 'get' | 'post' | 'put', resource: string, xml?: string, params = {}) {
+    const config = {
+        params: { ws_key: API_KEY, output_format: 'XML', ...params },
+        headers: { 'Content-Type': 'application/xml' }
+    };
+    const url = resource.startsWith('http') ? resource : `${BASE_URL}/${resource}`;
+    const res = method === 'get' 
+        ? await axios.get(url, config)
+        : await axios[method](url, xml, config);
+    return parser.parse(res.data);
 }
 
-/* ---------------- LOGIQUE METIER ---------------- */
+/* ---------------- WORKFLOW ERP ---------------- */
+async function runTest() {
+    loading.value = true;
+    logs.value = [];
+    log("🚀 Démarrage de la pipeline ERP...");
 
-// 1. Récupérer l'ID du produit via sa référence
-async function getProductId(ref: string) {
-    const res = await localPsGet('products', '', {
-        display: 'full',
-        'filter[reference]': `[${ref}]`
-    })
+    for (const entry of TEST_DATA) {
+        try {
+            log(`--- TRAITEMENT : ${entry.email} ---`);
 
-    const p = res?.prestashop?.products?.product
-    const product = Array.isArray(p) ? p[0] : p
+            // 1. CUSTOMER (Récupération ou Création)
+            let custId;
+            let secureKey;
+            const searchCust = await psRequest('get', 'customers', '', { 'filter[email]': `[${entry.email}]` });
+            
+            if (searchCust.prestashop.customers?.customer) {
+                custId = searchCust.prestashop.customers.customer['@_id'];
+                // Récupération de la secure_key pour l'existant
+                const existing = await psRequest('get', `customers/${custId}`);
+                secureKey = existing.prestashop.customer.secure_key;
+                log(`STEP 1: Client existant (ID: ${custId})`);
+            } else {
+                const xmlCust = `<prestashop><customer><lastname>${entry.nom}</lastname><firstname>${entry.nom}</firstname><email>${entry.email}</email><passwd>${entry.pwd}</passwd><active>1</active></customer></prestashop>`;
+                const resCust = await psRequest('post', 'customers', xmlCust);
+                custId = resCust.prestashop.customer.id;
+                secureKey = resCust.prestashop.customer.secure_key;
+                log(`STEP 1: Client créé (ID: ${custId})`);
+            }
 
-    if (!product) throw new Error(`Produit avec la référence "${ref}" introuvable`)
-    return getXmlText(product.id)
-}
+            // 2. ADDRESS
+            const xmlAddr = `<prestashop><address><id_customer>${custId}</id_customer><id_country>1</id_country><alias>ERP_IMPORT</alias><lastname>${entry.nom}</lastname><firstname>${entry.nom}</firstname><address1>${entry.adresse}</address1><city>Antananarivo</city><postcode>101</postcode></address></prestashop>`;
+            const resAddr = await psRequest('post', 'addresses', xmlAddr);
+            const addrId = resAddr.prestashop.address.id;
+            log(`STEP 2: Adresse créée (ID: ${addrId})`);
 
-// 2. Créer la déclinaison (Combination)
-async function createCombination(productId: string, row: any) {
-    // Note: l'ID de l'option de valeur (id: 1) doit exister dans votre PS
-    const xml = `
-<prestashop>
-  <combination>
-    <id_product>${productId}</id_product>
-    <reference><![CDATA[${reference.value}_${row.value}]]></reference>
-    <price>${row.price}</price>
-    <minimal_quantity>1</minimal_quantity>
-    <default_on>0</default_on>
-    <associations>
-      <product_option_values>
-        <product_option_value>
-          <id>1</id> 
-        </product_option_value>
-      </product_option_values>
-    </associations>
-  </combination>
-</prestashop>`
+            // 3. PRODUCTS & CART
+            let cartRows = "";
+            let totalOrder = 0;
 
-    const res = await localPsPost('combinations', xml)
-    const doc = new DOMParser().parseFromString(res, 'text/xml')
-    const id = doc.getElementsByTagName('id')[0]?.textContent
+            for (const item of entry.achats) {
+                const pData = await psRequest('get', 'products', '', { 'filter[reference]': `[${item.ref}]`, display: 'full' });
+                const product = pData.prestashop.products?.product;
+                if (!product) throw new Error(`Produit ${item.ref} introuvable`);
+                
+                const pid = product.id;
+                const price = parseFloat(product.price);
+                
+                let aid = 0;
+                if (item.declinaison) {
+                    const combRef = `${item.ref}_${item.declinaison}`;
+                    const cData = await psRequest('get', 'combinations', '', { 'filter[reference]': `[${combRef}]` });
+                    aid = cData.prestashop.combinations?.combination?.['@_id'] || 0;
+                }
 
-    if (!id) throw new Error("Échec de création de la déclinaison")
-    return id
-}
+                cartRows += `<cart_row><id_product>${pid}</id_product><id_product_attribute>${aid}</id_product_attribute><quantity>${item.qty}</quantity></cart_row>`;
+                totalOrder += (price * item.qty);
+            }
 
-// 3. Mettre à jour le stock (La partie délicate)
-async function setStock(productId: string, combinationId: string, qty: number) {
-    try {
-        // Un court délai permet à PrestaShop de générer la ligne en base de données
-        await sleep(700);
+            const xmlCart = `<prestashop><cart><id_customer>${custId}</id_customer><id_currency>1</id_currency><id_lang>1</id_lang><id_address_delivery>${addrId}</id_address_delivery><id_address_invoice>${addrId}</id_address_invoice><associations><cart_rows>${cartRows}</cart_rows></associations></cart></prestashop>`;
+            const resCart = await psRequest('post', 'carts', xmlCart);
+            const cartId = resCart.prestashop.cart.id;
+            log(`STEP 3/4: Panier créé (ID: ${cartId})`);
 
-        // Récupération de l'ID stock généré automatiquement
-        const res = await localPsGet('stock_availables', '', {
-            'filter[id_product]': `[${productId}]`,
-            'filter[id_product_attribute]': `[${combinationId}]`,
-            display: 'full'
-        })
+            // 4. ORDER (Correction erreur 500)
+            const statesMap: any = { "en attente paiement à la livraison": 13, "paiement accepté": 2, "erreur de paiement": 8 };
+            const statusId = statesMap[entry.etat] || 1;
 
-        const stockData = res?.prestashop?.stock_availables?.stock_available
-        const stock = Array.isArray(stockData) ? stockData[0] : stockData
+            const xmlOrder = `<prestashop>
+                <order>
+                    <id_address_delivery>${addrId}</id_address_delivery>
+                    <id_address_invoice>${addrId}</id_address_invoice>
+                    <id_cart>${cartId}</id_cart>
+                    <id_currency>1</id_currency>
+                    <id_lang>1</id_lang>
+                    <id_customer>${custId}</id_customer>
+                    <id_carrier>1</id_carrier>
+                    <current_state>${statusId}</current_state>
+                    <module>ps_cashondelivery</module>
+                    <payment>Cash on delivery</payment>
+                    <secure_key>${secureKey}</secure_key>
+                    <total_paid>${totalOrder.toFixed(2)}</total_paid>
+                    <total_paid_real>${entry.etat === 'paiement accepté' ? totalOrder.toFixed(2) : '0.00'}</total_paid_real>
+                    <total_products>${totalOrder.toFixed(2)}</total_products>
+                    <total_products_wt>${totalOrder.toFixed(2)}</total_products_wt>
+                    <conversion_rate>1</conversion_rate>
+                </order>
+            </prestashop>`;
+            
+            const resOrder = await psRequest('post', 'orders', xmlOrder);
+            const orderId = resOrder.prestashop.order.id;
+            log(`STEP 5: Commande créée (ID: ${orderId})`);
 
-        if (!stock?.id) {
-            throw new Error("Lien stock (stock_available) introuvable pour cette déclinaison")
+            // 5. ORDER HISTORY
+            const xmlHis = `<prestashop><order_history><id_order>${orderId}</id_order><id_order_state>${statusId}</id_order_state></order_history></prestashop>`;
+            await psRequest('post', 'order_histories', xmlHis);
+            log(`STEP 6: Statut "${entry.etat}" validé.`);
+
+            log(`✅ SUCCÈS pour ${entry.email}`);
+
+        } catch (err: any) {
+            const errorMsg = err.response?.data?.prestashop?.errors?.error?.message || err.message;
+            log(`❌ ERREUR sur ${entry.email}: ${errorMsg}`);
         }
-
-        // PUT vers stock_availables avec les champs obligatoires
-        const xml = `
-<prestashop>
-  <stock_available>
-    <id>${stock.id}</id>
-    <id_product>${productId}</id_product>
-    <id_product_attribute>${combinationId}</id_product_attribute>
-    <quantity>${qty}</quantity>
-    <id_shop>1</id_shop>
-    <out_of_stock>2</out_of_stock>
-    <depends_on_stock>0</depends_on_stock>
-  </stock_available>
-</prestashop>`
-
-        await localPsPut('stock_availables', xml)
-        log(`✅ STOCK MIS À JOUR : ${qty}`)
-
-    } catch (e: any) {
-        console.error("Détail Erreur Stock:", e?.response?.data || e)
-        log(`❌ Erreur stock: ${e.message}`)
     }
-}
-
-/* ---------------- MAIN ---------------- */
-async function generate() {
-    loading.value = true
-    logs.value = []
-
-    try {
-        log(`🚀 Démarrage du processus pour ${reference.value}`)
-
-        const productId = await getProductId(reference.value)
-        log(`📦 Produit Parent ID : ${productId}`)
-
-        for (const row of rows.value) {
-            log(`⚙️ Traitement de : ${row.value}`)
-
-            // Création de la déclinaison
-            const combinationId = await createCombination(productId, row)
-            log(`✔ Déclinaison ID=${combinationId} créée`)
-
-            // Mise à jour du stock pour cette déclinaison
-            await setStock(productId, combinationId, row.stock)
-        }
-
-        log(`🎉 OPÉRATION TERMINÉE`)
-
-    } catch (e: any) {
-        log(`❌ ERREUR MAJEURE: ${e.message}`)
-        console.error(e)
-    } finally {
-        loading.value = false
-    }
+    loading.value = false;
+    log("🏁 Session terminée.");
 }
 </script>
 
 <template>
-  <div class="p-6 max-w-3xl mx-auto font-sans">
-    <div class="bg-white p-6 rounded-lg shadow-lg border border-gray-200">
-      <h2 class="text-2xl font-bold mb-6 text-gray-800">
-        Générateur de Déclinaisons PrestaShop
-      </h2>
+    <div class="min-h-screen bg-black text-green-500 p-8 font-mono">
+        <div class="max-w-4xl mx-auto border border-green-900 p-6 shadow-2xl bg-black">
+            <h1 class="text-xl font-bold mb-4 border-b border-green-900 pb-2 text-green-400">
+                PS_ERP_PIPELINE_STRICT
+            </h1>
 
-      <!-- REF -->
-      <div class="mb-6">
-        <label class="block text-sm font-medium text-gray-700 mb-1">Référence du produit parent</label>
-        <input
-            v-model="reference"
-            class="border border-gray-300 p-2 w-full rounded focus:ring-2 focus:ring-blue-500 outline-none"
-            placeholder="Ex: T_01"
-        />
-      </div>
+            <button 
+                @click="runTest" 
+                :disabled="loading"
+                class="bg-green-900 hover:bg-green-700 text-white px-6 py-2 rounded mb-6 disabled:opacity-50"
+            >
+                {{ loading ? '> INITIALIZING...' : '> EXECUTE_INTERNAL_DATA' }}
+            </button>
 
-      <!-- TABLE -->
-      <div class="overflow-x-auto mb-6">
-        <table class="w-full border-collapse">
-            <thead>
-                <tr class="bg-gray-50 border-b border-gray-300">
-                    <th class="p-2 text-left text-xs font-semibold text-gray-600 uppercase">Valeur</th>
-                    <th class="p-2 text-left text-xs font-semibold text-gray-600 uppercase">Stock</th>
-                    <th class="p-2 text-left text-xs font-semibold text-gray-600 uppercase">Impact Prix HT</th>
-                </tr>
-            </thead>
-            <tbody>
-                <tr v-for="(r,i) in rows" :key="i" class="border-b border-gray-100">
-                    <td class="p-2 text-sm text-gray-700">
-                        <input v-model="r.value" class="border p-1 w-full rounded bg-gray-50"/>
-                    </td>
-                    <td class="p-2 text-sm">
-                        <input v-model.number="r.stock" type="number" class="border p-1 w-full rounded"/>
-                    </td>
-                    <td class="p-2 text-sm">
-                        <input v-model.number="r.price" type="number" class="border p-1 w-full rounded"/>
-                    </td>
-                </tr>
-            </tbody>
-        </table>
-      </div>
-
-      <!-- BUTTON -->
-      <button
-          @click="generate"
-          :disabled="loading"
-          class="w-full py-3 px-4 rounded font-bold text-white transition-all shadow-md"
-          :class="loading ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 active:transform active:scale-95'"
-      >
-          {{ loading ? 'Traitement en cours...' : 'Lancer la génération' }}
-      </button>
-    </div>
-
-    <!-- LOGS -->
-    <div class="mt-6 bg-gray-900 rounded-lg p-4 shadow-inner">
-        <div class="flex justify-between items-center mb-2">
-            <span class="text-xs font-mono text-gray-400 uppercase tracking-widest">Logs Console</span>
-            <span v-if="loading" class="animate-pulse text-blue-400 text-xs">● Processing</span>
-        </div>
-        <div class="h-64 overflow-y-auto font-mono text-sm">
-            <div v-for="(l,i) in logs" :key="i" 
-                 :class="l.includes('❌') ? 'text-red-400' : l.includes('✅') || l.includes('🎉') ? 'text-green-400' : 'text-gray-300'"
-                 class="mb-1 border-l-2 border-gray-700 pl-2">
-              <span class="text-gray-600 mr-2">[{{ new Date().toLocaleTimeString() }}]</span> {{ l }}
+            <div class="bg-gray-950 p-4 rounded h-[450px] overflow-y-auto border border-green-900 shadow-inner">
+                <div v-for="(log, i) in logs" :key="i" class="mb-1 text-sm">
+                    <span :class="{
+                        'text-red-500': log.includes('❌'),
+                        'text-cyan-300': log.includes('✅'),
+                        'text-yellow-500': log.includes('STEP')
+                    }">{{ log }}</span>
+                </div>
+                <div v-if="logs.length === 0" class="text-gray-800 italic">Prêt pour injection de données...</div>
             </div>
-            <div v-if="logs.length === 0" class="text-gray-600 italic">En attente de démarrage...</div>
         </div>
     </div>
-  </div>
 </template>
