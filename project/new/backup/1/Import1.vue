@@ -6,10 +6,10 @@ const loading = ref(false)
 const logs = ref<string[]>([])
 
 const products = [
-    { nom: 'Tshirt', reference: 'T_01', prix_ttc: 12.5, taxe: 19.1, prix_achat: 8.5 },
-    { nom: 'Pantalon', reference: 'P_01', prix_ttc: 18.99, taxe: 19.2, prix_achat: 14.33 },
-    { nom: 'Casquette', reference: 'C_03', prix_ttc: 5, taxe: 19.3, prix_achat: 2 },
-    { nom: 'Montre', reference: 'M_02', prix_ttc: 56, taxe: 19.4, prix_achat: 40 }
+    { nom: 'Tshirt', reference: 'T_01', prix_ttc: 12.5, taxe: 11.65, prix_achat: 8.5 },
+    { nom: 'Pantalon', reference: 'P_01', prix_ttc: 18.99, taxe: 11.65, prix_achat: 14.33 },
+    { nom: 'Casquette', reference: 'C_03', prix_ttc: 5, taxe: 5.6, prix_achat: 2 },
+    { nom: 'Montre', reference: 'M_02', prix_ttc: 56, taxe: 5.6, prix_achat: 40 }
 ]
 
 /* --- PARSER XML --- */

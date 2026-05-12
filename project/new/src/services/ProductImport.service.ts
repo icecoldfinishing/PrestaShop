@@ -5,7 +5,6 @@ export type ImportProduct = {
     reference: string;
     prix_ttc: number;
     taxe: number;
-    prix_achat: number;
 };
 
 export type ImportLogCallback = (message: string) => void;
@@ -60,16 +59,17 @@ function normalizeApiCollection<T>(value: T | T[] | undefined | null): T[] {
     return Array.isArray(value) ? value : [value];
 }
 
-async function getOrCreateTaxRuleGroup(rate: number): Promise<string> {
-    const groupName = `TVA ${rate}%`;
+async function getSafeTaxGroupId(product: ImportProduct): Promise<string> {
+    const groupName = `TVA_${product.reference}`;
+    const rateStr = product.taxe.toFixed(3);
 
-    const list = await psGet("tax_rule_groups", "", {
+    const groupList = await psGet("tax_rule_groups", "", {
         display: "full",
         "filter[name]": groupName,
     });
 
     const groups = normalizeApiCollection(
-        (list as any)?.prestashop?.tax_rule_groups?.tax_rule_group
+        (groupList as any)?.prestashop?.tax_rule_groups?.tax_rule_group
     );
     const existingId = getTextValue(groups[0]?.id);
 
@@ -77,27 +77,40 @@ async function getOrCreateTaxRuleGroup(rate: number): Promise<string> {
         return existingId;
     }
 
-    const taxXml = `<prestashop><tax>
-    <rate>${rate}</rate>
-    <active>1</active>
-    <name><language id="1"><![CDATA[${groupName}]]></language></name>
-  </tax></prestashop>`;
-    const taxId = requireXmlId(await psPost("taxes", taxXml), "taxe");
+    const taxList = await psGet("taxes", "", {
+        display: "full",
+        "filter[rate]": rateStr,
+    });
+    const taxes = normalizeApiCollection(
+        (taxList as any)?.prestashop?.taxes?.tax
+    );
+    let taxId = getTextValue(taxes[0]?.id);
+
+    if (!taxId) {
+        const taxXml = `<prestashop><tax>
+  <rate>${product.taxe}</rate>
+  <active>1</active>
+  <name><language id="1"><![CDATA[Taux ${product.taxe}%]]></language></name>
+</tax></prestashop>`;
+        taxId = requireXmlId(await psPost("taxes", taxXml), "taxe");
+    }
 
     const groupXml = `<prestashop><tax_rule_group>
-    <name><![CDATA[${groupName}]]></name>
-    <active>1</active>
-  </tax_rule_group></prestashop>`;
+  <name><![CDATA[${groupName}]]></name>
+  <active>1</active>
+</tax_rule_group></prestashop>`;
     const taxGroupId = requireXmlId(
         await psPost("tax_rule_groups", groupXml),
         "groupe"
     );
 
     const ruleXml = `<prestashop><tax_rule>
-    <id_tax_rules_group>${taxGroupId}</id_tax_rules_group>
-    <id_country>${DEFAULT_COUNTRY_ID}</id_country>
-    <id_tax>${taxId}</id_tax>
-  </tax_rule></prestashop>`;
+  <id_tax_rules_group>${taxGroupId}</id_tax_rules_group>
+  <id_country>${DEFAULT_COUNTRY_ID}</id_country>
+  <id_state>0</id_state>
+  <id_tax>${taxId}</id_tax>
+  <behavior>0</behavior>
+</tax_rule></prestashop>`;
     await psPost("tax_rules", ruleXml);
 
     return taxGroupId;
@@ -107,36 +120,19 @@ function buildProductXml(product: ImportProduct, taxGroupId: string): string {
     const prixHt = calculatePrixHt(product.prix_ttc, product.taxe);
     const slug = buildSlug(product.nom);
 
-    return `<prestashop xmlns:xlink="http://www.w3.org/1999/xlink">
+    return `<prestashop>
     <product>
-      <id_shop_default>${DEFAULT_SHOP_ID}</id_shop_default>
-      <id_category_default>${DEFAULT_CATEGORY_ID}</id_category_default>
-      <active>1</active>
-      <state>1</state>
-      <visibility>both</visibility>
-
-      <id_tax_rules_group>${taxGroupId}</id_tax_rules_group>
-
-      <price>${prixHt.toFixed(6)}</price>
-      <wholesale_price>${product.prix_achat.toFixed(6)}</wholesale_price>
-
-      <reference>${product.reference}</reference>
-      <name><language id="1"><![CDATA[${product.nom}]]></language></name>
-      <link_rewrite><language id="1"><![CDATA[${slug}]]></language></link_rewrite>
-
-      <available_for_order>1</available_for_order>
-      <show_price>1</show_price>
-      <minimal_quantity>1</minimal_quantity>
-      <condition>new</condition>
-      <indexed>1</indexed>
-
-      <associations>
-        <categories>
-          <category><id>${DEFAULT_CATEGORY_ID}</id></category>
-        </categories>
-      </associations>
+        <id_shop_default>${DEFAULT_SHOP_ID}</id_shop_default>
+        <id_category_default>${DEFAULT_CATEGORY_ID}</id_category_default>
+        <id_tax_rules_group>${taxGroupId}</id_tax_rules_group>
+        <price>${prixHt.toFixed(6)}</price>
+        <active>1</active>
+        <state>1</state>
+        <reference>${product.reference}</reference>
+        <name><language id="1"><![CDATA[${product.nom}]]></language></name>
+        <link_rewrite><language id="1"><![CDATA[${slug}]]></language></link_rewrite>
     </product>
-  </prestashop>`;
+</prestashop>`;
 }
 
 function formatError(error: unknown): string {
@@ -162,17 +158,15 @@ export async function runImport(
 
     for (const product of items) {
         try {
-            const taxGroupId = await getOrCreateTaxRuleGroup(product.taxe);
+            const taxGroupId = await getSafeTaxGroupId(product);
             const productXml = buildProductXml(product, taxGroupId);
             await psPost("products", productXml);
 
-            log(
-                `OK ${product.nom} importe (TVA ${product.taxe}% - Groupe ${taxGroupId})`
-            );
+            log(`Produit ${product.reference} traite (Groupe Taxe : ${taxGroupId})`);
         } catch (error) {
-            log(`ERREUR ${product.nom} : ${formatError(error)}`);
+            log(`Erreur sur ${product.reference} : ${formatError(error)}`);
         }
     }
 
-    log("--- Import termine. Actualise le Back Office ---");
+    log("Fin de l'import. Les anciens produits n'ont pas ete touches.");
 }
