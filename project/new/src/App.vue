@@ -3,6 +3,7 @@ import { ref, computed } from "vue";
 
 import AdminLogin from "./components/BO/auth/auth.vue";
 import CustomerLogin from "./components/FO/auth/login.vue";
+import FoUserPick from "./components/FO/auth/FoUserPick.vue";
 
 import ApiResponseViewer from "./components/BO/API/ApiResponseViewer.vue";
 import Home from "./components/BO/home/Home.vue";
@@ -24,7 +25,7 @@ import CustomerEdit from "./components/BO/customer/CustomerEdit.vue";
 import OrderList from "./components/BO/order/OrderList.vue";
 import DataResetManager from "./components/BO/reset/DataResetManager.vue";
 
-import { loggedCustomer, logout, loggedAdmin, adminLogout } from "./utils/auth-state";
+import { loggedCustomer, logout, loggedAdmin, adminLogout, enterFoGuest } from "./utils/auth-state";
 import { cart } from "./utils/prestashop-api";
 
 import "bootstrap/dist/css/bootstrap.min.css";
@@ -36,6 +37,7 @@ const mode = ref("FO");
 /* ================= PAGE STATE ================= */
 const PAGE = {
   FO_HOME: "fo-home",
+  FO_USER_PICK: "fo-user-pick",
   FO_PRODUCTS: "products-list-fo",
   FO_PRODUCT_DETAIL: "fo-product-detail",
   FO_LOGIN: "fo-login",
@@ -58,7 +60,18 @@ const PAGE = {
   BO_RESET: "data-reset",
 };
 
-const currentPage = ref(PAGE.FO_LOGIN);
+function resolveInitialFoPage() {
+  try {
+    const raw = localStorage.getItem("loggedCustomer");
+    if (!raw || raw === "null") return PAGE.FO_USER_PICK;
+    return PAGE.FO_HOME;
+  } catch {
+    return PAGE.FO_USER_PICK;
+  }
+}
+
+const currentPage = ref(resolveInitialFoPage());
+const loginPrefillEmail = ref("");
 
 /* ================= DATA ================= */
 const selectedProductId = ref(null);
@@ -70,15 +83,6 @@ const isAdmin = computed(() => !!loggedAdmin.value);
 const isCustomer = computed(() => !!loggedCustomer.value);
 
 cart.setOwner(loggedCustomer.value?.id || null);
-
-/* ================= GUARD FO ================= */
-const requireCustomer = (nextPage) => {
-  if (!isCustomer.value) {
-    currentPage.value = PAGE.FO_LOGIN;
-    return;
-  }
-  currentPage.value = nextPage;
-};
 
 /* ================= PRODUCTS ================= */
 const openEditProduct = (id) => {
@@ -104,7 +108,7 @@ const closeEditCustomer = () => {
 
 /* ================= FO ================= */
 const openFoLogin = () => {
-  currentPage.value = PAGE.FO_LOGIN;
+  currentPage.value = PAGE.FO_USER_PICK;
 };
 
 const openFoProduct = (id) => {
@@ -118,27 +122,62 @@ const closeFoProduct = () => {
 };
 
 const goToCart = () => {
-  requireCustomer(PAGE.FO_CART);
+  if (!loggedCustomer.value) {
+    currentPage.value = PAGE.FO_USER_PICK;
+    return;
+  }
+  currentPage.value = PAGE.FO_CART;
 };
 
 const goToFoOrders = () => {
-  requireCustomer(PAGE.FO_ORDERS);
+  if (!loggedCustomer.value) {
+    currentPage.value = PAGE.FO_USER_PICK;
+    return;
+  }
+  if (loggedCustomer.value?.guest) {
+    loginPrefillEmail.value = "";
+    currentPage.value = PAGE.FO_LOGIN;
+    return;
+  }
+  currentPage.value = PAGE.FO_ORDERS;
 };
 
 const goToHomeFO = () => {
-  requireCustomer(PAGE.FO_HOME);
+  if (!loggedCustomer.value) {
+    currentPage.value = PAGE.FO_USER_PICK;
+    return;
+  }
+  currentPage.value = PAGE.FO_HOME;
 };
 
 const handleCustomerLogout = () => {
   logout();
   cart.setOwner(null);
-  currentPage.value = PAGE.FO_LOGIN;
+  currentPage.value = PAGE.FO_USER_PICK;
 };
 
 /* ================= LOGIN SUCCESS ================= */
 const handleFoLogin = () => {
+  loginPrefillEmail.value = "";
   cart.setOwner(loggedCustomer.value?.id || null);
   currentPage.value = PAGE.FO_HOME;
+};
+
+const handleFoGuest = () => {
+  enterFoGuest();
+  cart.setOwner(null);
+  loginPrefillEmail.value = "";
+  currentPage.value = PAGE.FO_HOME;
+};
+
+const onChooseFoLogin = (email) => {
+  loginPrefillEmail.value = email;
+  currentPage.value = PAGE.FO_LOGIN;
+};
+
+const backToFoUserPick = () => {
+  currentPage.value = PAGE.FO_USER_PICK;
+  loginPrefillEmail.value = "";
 };
 
 const handleAdminLogin = () => {
@@ -164,7 +203,7 @@ const switchMode = (newMode) => {
   mode.value = newMode;
 
   if (newMode === "FO") {
-    currentPage.value = PAGE.FO_HOME;
+    currentPage.value = loggedCustomer.value ? PAGE.FO_HOME : PAGE.FO_USER_PICK;
   }
 
   if (newMode === "BO") {
@@ -254,21 +293,37 @@ const switchMode = (newMode) => {
       <!-- ================= MAIN ================= -->
       <div class="flex-grow-1 p-4 bg-light">
 
+        <!-- ================= FO CHOIX UTILISATEUR ================= -->
+        <FoUserPick
+          v-if="mode === 'FO' && currentPage === PAGE.FO_USER_PICK"
+          @choose-login="onChooseFoLogin"
+          @guest="handleFoGuest"
+        />
+
         <!-- ================= FO LOGIN ================= -->
         <CustomerLogin
           v-if="mode === 'FO' && currentPage === PAGE.FO_LOGIN"
+          :prefill-email="loginPrefillEmail"
           @success="handleFoLogin"
+          @back="backToFoUserPick"
         />
 
-        <!-- ================= FO AdminLogin STATUS ================= -->
-        <div v-if="mode === 'FO' && isCustomer"
-             class="alert alert-success d-flex justify-content-between">
-
+        <!-- ================= FO BARRE SESSION ================= -->
+        <div
+          v-if="mode === 'FO' && loggedCustomer && currentPage !== PAGE.FO_USER_PICK && currentPage !== PAGE.FO_LOGIN"
+          class="alert d-flex justify-content-between"
+          :class="loggedCustomer?.guest ? 'alert-secondary' : 'alert-success'"
+        >
           <div>
-            Connecté : <b>{{ loggedCustomer.firstname }} {{ loggedCustomer.lastname }}</b>
+            <template v-if="loggedCustomer?.guest">
+              <b>Mode invité</b> — navigation sans compte client
+            </template>
+            <template v-else>
+              Connecté : <b>{{ loggedCustomer.firstname }} {{ loggedCustomer.lastname }}</b>
+            </template>
           </div>
 
-          <button class="btn btn-sm btn-danger" @click="handleCustomerLogout">Logout</button>
+          <button class="btn btn-sm btn-danger" @click="handleCustomerLogout">Déconnexion</button>
         </div>
 
         <!-- ================= FO ================= -->
@@ -290,7 +345,7 @@ const switchMode = (newMode) => {
         />
 
         <FoOrders
-          v-if="mode === 'FO' && currentPage === PAGE.FO_ORDERS && isCustomer"
+          v-if="mode === 'FO' && currentPage === PAGE.FO_ORDERS && isCustomer && !loggedCustomer?.guest"
         />
 
         <!-- ================= BO ================= -->

@@ -95,6 +95,10 @@ const handleCheckout = async () => {
         addLog('Erreur : client non connecté', true);
         return;
     }
+    if (loggedCustomer.value && 'guest' in loggedCustomer.value && loggedCustomer.value.guest) {
+        addLog('Mode invité : connectez-vous avec un compte pour valider une commande.', true);
+        return;
+    }
     if (!cart.items.length) {
         addLog('Panier vide.', true);
         return;

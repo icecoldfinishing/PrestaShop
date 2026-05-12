@@ -210,6 +210,77 @@ export async function psGetOrdersDashboardStats() {
   return psAggregateOrdersByDay(orders);
 }
 
+/** URL publique PrestaShop (images hors proxy). */
+export const PS_PUBLIC_ORIGIN =
+  import.meta.env.VITE_PRESTASHOP_PUBLIC_ORIGIN || 'http://localhost:8088';
+
+/**
+ * Clients actifs pour sélection FO (sans mot de passe).
+ * @returns {Promise<Array<{ id: string, email: string, firstname: string, lastname: string }>>}
+ */
+export async function psGetActiveCustomersBrief() {
+  const data = await psGet('customers', '', {
+    display: '[id,email,firstname,lastname,active]',
+    'filter[active]': '[1]',
+  });
+  const raw = data?.prestashop?.customers?.customer;
+  if (!raw) return [];
+  const list = Array.isArray(raw) ? raw : [raw];
+  return list.map((c) => ({
+    id: getXmlText(c.id),
+    email: getXmlText(c.email),
+    firstname: getXmlText(c.firstname),
+    lastname: getXmlText(c.lastname),
+  }));
+}
+
+/**
+ * Catégories actives (id + nom) pour filtres FO.
+ * @returns {Promise<Array<{ id: string, name: string }>>}
+ */
+export async function psGetCategoriesBrief() {
+  const data = await psGet('categories', '', {
+    display: '[id,name,id_parent,active]',
+    'filter[active]': '[1]',
+  });
+  const raw = data?.prestashop?.categories?.category;
+  if (!raw) return [];
+  const list = Array.isArray(raw) ? raw : [raw];
+  return list
+    .map((cat) => {
+      const id = getXmlText(cat.id);
+      if (!id || id === '1') return null;
+      const nameField = cat.name?.language;
+      const name = Array.isArray(nameField) ? getXmlText(nameField[0]) : getXmlText(nameField);
+      return { id, name: name || `Catégorie ${id}` };
+    })
+    .filter(Boolean);
+}
+
+/**
+ * Badge produit selon date de disponibilité (`available_date`) ou repli sur `date_add`.
+ * HOT : disponibilité / création dans les dernières 24 h.
+ * NEW : entre 24 h et 7 jours (strictement après la fenêtre HOT).
+ */
+export function foProductBadgeFromAvailability(availableDate, dateAdd) {
+  const parseDay = (s) => {
+    const t = String(s || '').trim().slice(0, 10);
+    if (!t || t.startsWith('0000')) return null;
+    const d = new Date(`${t}T12:00:00`);
+    return Number.isNaN(d.getTime()) ? null : d;
+  };
+  const ref = parseDay(availableDate) || parseDay(dateAdd);
+  if (!ref) return null;
+  const end = new Date();
+  end.setHours(23, 59, 59, 999);
+  const ms = end.getTime() - ref.getTime();
+  if (ms < 0) return null;
+  const days = ms / 86400000;
+  if (days <= 1) return 'HOT';
+  if (days <= 7) return 'NEW';
+  return null;
+}
+
 
 /**
  * Retrieve all IDs for a given API resource.

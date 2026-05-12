@@ -1,14 +1,30 @@
 <script setup>
-import { ref } from 'vue';
+import { ref, watch } from 'vue';
 import { psLoginCustomer } from '../../../utils/prestashop-api';
 import { setLoggedCustomer } from '../../../utils/auth-state';
 
-const emit = defineEmits(["success"]);
+const props = defineProps({
+    /** Email prérempli après choix sur l’écran utilisateurs */
+    prefillEmail: { type: String, default: '' },
+});
+
+const emit = defineEmits(['success', 'back']);
 
 const credentials = ref({
     email: 'rohy@gmail.com',
-    password: 'rohybapex'
+    password: 'rohybapex',
 });
+
+watch(
+    () => props.prefillEmail,
+    (email) => {
+        if (email) {
+            credentials.value.email = email;
+            credentials.value.password = '';
+        }
+    },
+    { immediate: true }
+);
 
 const loading = ref(false);
 const errorMsg = ref('');
@@ -51,6 +67,15 @@ const handleLogin = async () => {
 
                 <!-- Form side -->
                 <div class="col-md-7 bg-white p-4 p-lg-5">
+                    <div class="d-flex justify-content-between align-items-start mb-3">
+                        <button
+                            type="button"
+                            class="btn btn-link btn-sm text-decoration-none p-0"
+                            @click="emit('back')"
+                        >
+                            ← Choisir un autre utilisateur
+                        </button>
+                    </div>
                     <div class="mb-4">
                         <h2 class="fw-bold text-dark">Connexion</h2>
                         <p class="text-muted">Entrez vos identifiants ci-dessous</p>

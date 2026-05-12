@@ -26,6 +26,21 @@ export function logout() {
     setLoggedCustomer(null);
 }
 
+/** Session invitée FO (pas d’id client PrestaShop). */
+export function enterFoGuest() {
+    setLoggedCustomer({
+        id: null,
+        email: null,
+        firstname: 'Invité',
+        lastname: '',
+        guest: true,
+    });
+}
+
+export function isFoGuest() {
+    return !!loggedCustomer.value?.guest;
+}
+
 export const loggedAdmin = ref(JSON.parse(localStorage.getItem('loggedAdmin') || 'null'));
 export const isAdminLoggedIn = computed(() => !!loggedAdmin.value);
 
