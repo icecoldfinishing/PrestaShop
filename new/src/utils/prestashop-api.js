@@ -571,7 +571,9 @@ export async function psLoadCartItems(cartId) {
     const p = products[idx]?.prestashop?.product;
     const priceHt = Number.parseFloat(getXmlText(p?.price) || '0') || 0;
     const taxMultiplier = await psGetProductTaxMultiplier(p);
-    const priceTtc = priceHt * taxMultiplier;
+    const impactHt = await psGetCombinationPriceImpact(attr);
+    const priceHtWithImpact = priceHt + impactHt;
+    const priceTtc = priceHtWithImpact * taxMultiplier;
     const name = extractText(p?.name) || 'Produit';
     const reference = getXmlText(p?.reference) || '';
     const cartIdKey = `${pid}-${attr}`;
@@ -586,6 +588,18 @@ export async function psLoadCartItems(cartId) {
       quantity: qty,
     };
   }));
+}
+
+async function psGetCombinationPriceImpact(combinationId) {
+  const cleaned = cleanId(combinationId);
+  if (!cleaned || cleaned === '0') return 0;
+  try {
+    const res = await psGet('combinations', cleaned, { display: '[id,price]' });
+    const combo = res?.prestashop?.combination;
+    return Number.parseFloat(getXmlText(combo?.price) || '0') || 0;
+  } catch {
+    return 0;
+  }
 }
 
 export async function psEnsureCustomerAddress(customer, defaults = {}) {
@@ -684,11 +698,16 @@ export async function psGetProductFullDetails(productId) {
     // --- Variants (Combinations) ---
     // Dans psGetProductFullDetails, remplace la partie --- Variants --- par ceci :
     const pCombos = [].concat(p.associations?.combinations?.combination || []);
-    const groupedVariants = {}; // Nouvel objet de regroupement
+    const groupedVariants = {};
+    const combinations = [];
 
     for (const combo of pCombos) {
-      const comboDetail = await psGet('combinations', cleanId(combo.id));
-      const attrValues = [].concat(comboDetail?.prestashop?.combination?.associations?.product_option_values?.product_option_value || []);
+      const comboId = cleanId(combo.id);
+      const comboDetail = await psGet('combinations', comboId);
+      const comboData = comboDetail?.prestashop?.combination;
+      const attrValues = [].concat(comboData?.associations?.product_option_values?.product_option_value || []);
+
+      const optionMap = {};
 
       for (const av of attrValues) {
         const attrValData = await psGet('product_option_values', cleanId(av.id));
@@ -698,13 +717,20 @@ export async function psGetProductFullDetails(productId) {
         const valueName = extractText(avData?.name);
 
         if (!groupedVariants[groupName]) {
-          groupedVariants[groupName] = new Set(); // Set pour éviter les doublons
+          groupedVariants[groupName] = new Set();
         }
         groupedVariants[groupName].add(valueName);
+        optionMap[groupName] = valueName;
       }
+
+      combinations.push({
+        id: comboId,
+        reference: getXmlText(comboData?.reference),
+        priceImpact: Number.parseFloat(getXmlText(comboData?.price) || '0') || 0,
+        options: optionMap
+      });
     }
 
-    // Convertir les Sets en Tableaux pour Vue
     const variants = {};
     for (const key in groupedVariants) {
       variants[key] = Array.from(groupedVariants[key]);
@@ -713,7 +739,8 @@ export async function psGetProductFullDetails(productId) {
     return {
       raw: p,
       features,
-      variants // Maintenant un objet { "Taille": [...], "Couleur": [...] }
+      variants,
+      combinations
     };
 
   } catch (error) {

@@ -4,14 +4,17 @@ import { extractText, psGetProductFullDetails, psGetProductTaxMultiplier, cart }
 
 type ProductDetail = {
     id: number;
+    id_attribute?: number;
     name: string;
     reference: string;
     priceHT: number;
     priceTTC: number;
+    taxMultiplier: number;
     description: string;
     imageUrl: string | null;
     features: string[];
     variants: Record<string, string[]>;
+    combinations: Array<{ id: string; reference: string; priceImpact: number; options: Record<string, string> }>;
 };
 
 const props = defineProps<{ productId: number | null }>();
@@ -26,6 +29,7 @@ const addingToCart = ref(false);
 
 const handleCart = (redirect: boolean = false) => {
     if (!product.value) return;
+    applySelectedCombination(product.value);
     addingToCart.value = true;
     const qty = Number.isFinite(quantity.value) ? Math.max(1, quantity.value) : 1;
     cart.add(product.value, qty, { ...selectedOptions })
@@ -72,16 +76,20 @@ const loadProduct = async (id: number | null) => {
             reference: p.reference || '',
             priceHT,
             priceTTC: priceHT * taxMultiplier,
+            taxMultiplier,
             description: extractText(p.description) || 'Aucune description',
             imageUrl: getImageUrl(Number(p.id), imageId),
             features: fullData.features,
             variants: fullData.variants,
+            combinations: fullData.combinations || [],
         };
 
         // Initialisation des variantes par défaut
         for (const [group, values] of Object.entries(fullData.variants)) {
             selectedOptions[group] = values[0];
         }
+
+        applySelectedCombination(product.value);
 
         quantity.value = 1;
 
@@ -95,6 +103,38 @@ const loadProduct = async (id: number | null) => {
 
 watch(() => props.productId, (v) => loadProduct(v));
 onMounted(() => loadProduct(props.productId ?? null));
+
+watch(
+    () => ({ ...selectedOptions }),
+    () => {
+        if (product.value) {
+            applySelectedCombination(product.value);
+        }
+    }
+);
+
+function applySelectedCombination(target: ProductDetail) {
+    if (!target.combinations.length) {
+        target.id_attribute = 0;
+        target.priceTTC = target.priceHT * target.taxMultiplier;
+        return;
+    }
+
+    const match = target.combinations.find((combo) =>
+        Object.entries(combo.options).every(([key, val]) => selectedOptions[key] === val)
+    );
+
+    if (!match) {
+        target.id_attribute = 0;
+        target.priceTTC = target.priceHT * target.taxMultiplier;
+        return;
+    }
+
+    const priceHtWithImpact = target.priceHT + match.priceImpact;
+    target.priceTTC = priceHtWithImpact * target.taxMultiplier;
+    target.reference = match.reference || target.reference;
+    target.id_attribute = Number(match.id);
+}
 </script>
 
 <template>

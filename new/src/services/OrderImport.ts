@@ -275,6 +275,29 @@ async function createCart(customerId: number, addressId: number, date: string) {
   return extractId(res)
 }
 
+async function findOpenCartId(customerId: number): Promise<number | null> {
+  const res = await prestashop.get(
+    `/carts?filter[id_customer]=[${customerId}]&display=[id,date_add]`
+  )
+
+  const xml: string = res.data || ""
+  const cartIds = [...xml.matchAll(/<id><!\[CDATA\[(\d+)\]\]><\/id>/g)]
+    .map(m => Number(m[1]))
+    .filter(id => !Number.isNaN(id))
+
+  for (const cartId of cartIds.sort((a, b) => b - a)) {
+    const ordersRes = await prestashop.get(
+      `/orders?filter[id_cart]=[${cartId}]&display=[id]`
+    )
+    const hasOrder = /<order>/.test(ordersRes.data || "")
+    if (!hasOrder) {
+      return cartId
+    }
+  }
+
+  return null
+}
+
 /* =====================================================
    PRODUCT LOOKUP  (by reference)
 ===================================================== */
@@ -433,18 +456,43 @@ async function addToCart(
 
   cartXml = cartXml.replace(/ xlink:href="[^"]*"/g, "")
 
-  let rows = ""
+  const existingMatch = cartXml.match(/<cart_rows[^>]*>([\s\S]*?)<\/cart_rows>/)
+  const existingRows = existingMatch?.[1] || ""
+
+  const rowRegex = /<cart_row>[\s\S]*?<id_product>(?:<!\[CDATA\[)?(\d+)(?:\]\]>)?<\/id_product>[\s\S]*?<id_product_attribute>(?:<!\[CDATA\[)?(\d+)(?:\]\]>)?<\/id_product_attribute>[\s\S]*?<quantity>(?:<!\[CDATA\[)?(\d+)(?:\]\]>)?<\/quantity>[\s\S]*?<\/cart_row>/g
+  const merged = new Map<string, { productId: number; attributeId: number; qty: number }>()
+
+  let match: RegExpExecArray | null
+  while ((match = rowRegex.exec(existingRows)) !== null) {
+    const productId = Number(match[1])
+    const attributeId = Number(match[2])
+    const qty = Number(match[3])
+    const key = `${productId}-${attributeId}`
+    merged.set(key, { productId, attributeId, qty: Number.isFinite(qty) ? qty : 0 })
+  }
+
   for (const item of items) {
-    rows += `
+    const key = `${item.productId}-${item.attributeId}`
+    const current = merged.get(key)
+    if (current) {
+      current.qty += item.qty
+    } else {
+      merged.set(key, { productId: item.productId, attributeId: item.attributeId, qty: item.qty })
+    }
+  }
+
+  let combinedRows = ""
+  for (const row of merged.values()) {
+    combinedRows += `
         <cart_row>
-          <id_product>${item.productId}</id_product>
-          <id_product_attribute>${item.attributeId}</id_product_attribute>
+          <id_product>${row.productId}</id_product>
+          <id_product_attribute>${row.attributeId}</id_product_attribute>
           <id_address_delivery>${addressId}</id_address_delivery>
-          <quantity>${item.qty}</quantity>
+          <quantity>${row.qty}</quantity>
         </cart_row>`
   }
 
-  const cartRowsBlock = `<cart_rows>${rows}
+  const cartRowsBlock = `<cart_rows>${combinedRows}
       </cart_rows>`
 
   if (/<cart_rows[^>]*\/>/.test(cartXml)) {
@@ -592,9 +640,14 @@ async function processRow(row: CsvOrder) {
   console.log("📍 Adresse créée avec date:", addressId)
 
   // ── Panier ──────────────────────────────────────────
-  // AJOUT: On passe orderDate pour le date_add/upd du panier
-  const cartId = await createCart(customerId, addressId, orderDate)
-  console.log("🛒 Panier créé avec date:", cartId)
+  // On réutilise un panier non payé si disponible
+  let cartId = await findOpenCartId(customerId)
+  if (cartId) {
+    console.log("🛒 Panier existant réutilisé:", cartId)
+  } else {
+    cartId = await createCart(customerId, addressId, orderDate)
+    console.log("🛒 Panier créé avec date:", cartId)
+  }
 
   // ── Produits & Calcul du Total ─────────────────────
   const itemsRaw = parsePurchase(purchase)
