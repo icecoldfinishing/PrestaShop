@@ -176,6 +176,14 @@ function extractId(res: any): number {
   throw new Error("Cannot extract ID from response")
 }
 
+async function getCartSecureKey(cartId: number): Promise<string> {
+  if (!cartId) return ''
+  const res = await prestashop.get(`/carts/${cartId}`)
+  const xml: string = res.data || ''
+  const match = xml.match(/<secure_key>(?:<!\[CDATA\[)?(.*?)(?:\]\]>)?<\/secure_key>/)
+  return match ? match[1].trim() : ''
+}
+
 function randomString(len = 10): string {
   return Math.random().toString(36).substring(2, 2 + len)
 }
@@ -193,10 +201,11 @@ async function findCustomerByEmail(email: string): Promise<number | null> {
   return match ? Number(match[1]) : null
 }
 
-async function createCustomer(name: string, email: string, password: string) {
+async function createCustomer(name: string, email: string, password: string, orderDate: string) {
   const parts = name.trim().split(/\s+/)
   const firstname = parts[0] || "Client"
   const lastname = parts.slice(1).join(" ") || "CSV"
+  const fullDate = `${orderDate} 10:00:00`
 
   const xml = `
 <prestashop>
@@ -208,6 +217,8 @@ async function createCustomer(name: string, email: string, password: string) {
     <email><![CDATA[${email}]]></email>
     <passwd><![CDATA[${password || randomString()}]]></passwd>
     <active>1</active>
+    <date_add>${fullDate}</date_add>
+    <date_upd>${fullDate}</date_upd>
   </customer>
 </prestashop>`
 
@@ -219,10 +230,11 @@ async function createCustomer(name: string, email: string, password: string) {
    ADDRESS
 ===================================================== */
 
-async function createAddress(customerId: number, name: string, address: string) {
+async function createAddress(customerId: number, name: string, address: string, orderDate: string) {
   const parts = name.trim().split(/\s+/)
   const firstname = parts[0] || "Client"
   const lastname = parts.slice(1).join(" ") || "CSV"
+  const fullDate = `${orderDate} 10:00:00`
 
   const xml = `
 <prestashop>
@@ -235,6 +247,8 @@ async function createAddress(customerId: number, name: string, address: string) 
     <address1><![CDATA[${address}]]></address1>
     <city><![CDATA[Paris]]></city>
     <postcode>75000</postcode>
+    <date_add>${fullDate}</date_add>
+    <date_upd>${fullDate}</date_upd>
   </address>
 </prestashop>`
 
@@ -246,7 +260,29 @@ async function createAddress(customerId: number, name: string, address: string) 
    CART
 ===================================================== */
 
-async function createCart(customerId: number, addressId: number) {
+async function createCart(
+  customerId: number,
+  addressId: number,
+  date: string,
+  items: { productId: number; qty: number; attributeId: number }[] = []
+) {
+  const fullDate = `${date} 10:00:00`;
+  const rows = items.map((item) => `
+    <cart_row>
+      <id_product>${item.productId}</id_product>
+      <id_product_attribute>${item.attributeId}</id_product_attribute>
+      <id_address_delivery>${addressId}</id_address_delivery>
+      <quantity>${item.qty}</quantity>
+    </cart_row>`).join("")
+
+  const associations = rows
+    ? `<associations>
+      <cart_rows>
+        ${rows}
+      </cart_rows>
+    </associations>`
+    : ''
+
   const xml = `
 <prestashop>
   <cart>
@@ -259,11 +295,37 @@ async function createCart(customerId: number, addressId: number) {
     <recyclable>0</recyclable>
     <gift>0</gift>
     <mobile_theme>0</mobile_theme>
+    <date_add>${fullDate}</date_add>
+    <date_upd>${fullDate}</date_upd>
+    ${associations}
   </cart>
 </prestashop>`
 
   const res = await safePost("/carts", xml)
   return extractId(res)
+}
+
+async function findOpenCartId(customerId: number): Promise<number | null> {
+  const res = await prestashop.get(
+    `/carts?filter[id_customer]=[${customerId}]&display=[id,date_add]`
+  )
+
+  const xml: string = res.data || ""
+  const cartIds = [...xml.matchAll(/<id><!\[CDATA\[(\d+)\]\]><\/id>/g)]
+    .map(m => Number(m[1]))
+    .filter(id => !Number.isNaN(id))
+
+  for (const cartId of cartIds.sort((a, b) => b - a)) {
+    const ordersRes = await prestashop.get(
+      `/orders?filter[id_cart]=[${cartId}]&display=[id]`
+    )
+    const hasOrder = /<order>/.test(ordersRes.data || "")
+    if (!hasOrder) {
+      return cartId
+    }
+  }
+
+  return null
 }
 
 /* =====================================================
@@ -424,18 +486,43 @@ async function addToCart(
 
   cartXml = cartXml.replace(/ xlink:href="[^"]*"/g, "")
 
-  let rows = ""
+  const existingMatch = cartXml.match(/<cart_rows[^>]*>([\s\S]*?)<\/cart_rows>/)
+  const existingRows = existingMatch?.[1] || ""
+
+  const rowRegex = /<cart_row>[\s\S]*?<id_product>(?:<!\[CDATA\[)?(\d+)(?:\]\]>)?<\/id_product>[\s\S]*?<id_product_attribute>(?:<!\[CDATA\[)?(\d+)(?:\]\]>)?<\/id_product_attribute>[\s\S]*?<quantity>(?:<!\[CDATA\[)?(\d+)(?:\]\]>)?<\/quantity>[\s\S]*?<\/cart_row>/g
+  const merged = new Map<string, { productId: number; attributeId: number; qty: number }>()
+
+  let match: RegExpExecArray | null
+  while ((match = rowRegex.exec(existingRows)) !== null) {
+    const productId = Number(match[1])
+    const attributeId = Number(match[2])
+    const qty = Number(match[3])
+    const key = `${productId}-${attributeId}`
+    merged.set(key, { productId, attributeId, qty: Number.isFinite(qty) ? qty : 0 })
+  }
+
   for (const item of items) {
-    rows += `
+    const key = `${item.productId}-${item.attributeId}`
+    const current = merged.get(key)
+    if (current) {
+      current.qty += item.qty
+    } else {
+      merged.set(key, { productId: item.productId, attributeId: item.attributeId, qty: item.qty })
+    }
+  }
+
+  let combinedRows = ""
+  for (const row of merged.values()) {
+    combinedRows += `
         <cart_row>
-          <id_product>${item.productId}</id_product>
-          <id_product_attribute>${item.attributeId}</id_product_attribute>
+          <id_product>${row.productId}</id_product>
+          <id_product_attribute>${row.attributeId}</id_product_attribute>
           <id_address_delivery>${addressId}</id_address_delivery>
-          <quantity>${item.qty}</quantity>
+          <quantity>${row.qty}</quantity>
         </cart_row>`
   }
 
-  const cartRowsBlock = `<cart_rows>${rows}
+  const cartRowsBlock = `<cart_rows>${combinedRows}
       </cart_rows>`
 
   if (/<cart_rows[^>]*\/>/.test(cartXml)) {
@@ -560,59 +647,40 @@ async function processRow(row: CsvOrder) {
 
   const hasEtat = etat !== ""
 
-  const stateId = hasEtat ? mapEtatToOrderData(etat).stateId : 0
-  const payment = hasEtat
-    ? mapEtatToPayment(etat)
-    : { module: "", label: "" }
+  // 1. Préparation des dates et données finales
+  const orderDate = parseOrderDate(rawDate) // Ex: "2024-05-13"
+  const finalStateId = hasEtat ? mapEtatToOrderData(etat).stateId : 0
+  const finalPayment = hasEtat ? mapEtatToPayment(etat) : { module: "", label: "" }
 
-  const orderDate = parseOrderDate(rawDate)
+  console.log(`📦 Processing: ${name} <${email}> | Date cible: ${orderDate}`)
 
-  console.log(`📦 Processing: ${name} <${email}> | etat="${etat}" → state=${stateId} | date=${orderDate}`)
-
-  // ── Customer ──────────────────────────────────────
+  // ── Client ──────────────────────────────────────
   let customerId = await findCustomerByEmail(email)
   if (!customerId) {
-    customerId = await createCustomer(name, email, password)
-    console.log("👤 Customer created:", customerId)
+    // AJOUT: On passe orderDate pour le date_add du client
+    customerId = await createCustomer(name, email, password, orderDate)
+    console.log("👤 Client créé avec date:", customerId)
   } else {
-    console.log("👤 Customer found:", customerId)
+    console.log("👤 Client trouvé:", customerId)
   }
 
-  // ── Address ───────────────────────────────────────
-  const addressId = await createAddress(customerId, name, address)
-  console.log("📍 Address created:", addressId)
+  // ── Adresse ───────────────────────────────────────
+  // AJOUT: On passe orderDate pour le date_add de l'adresse
+  const addressId = await createAddress(customerId, name, address, orderDate)
+  console.log("📍 Adresse créée avec date:", addressId)
 
-  // ── Cart ──────────────────────────────────────────
-  const cartId = await createCart(customerId, addressId)
-  console.log("🛒 Cart created:", cartId)
-
-  // ── Products ──────────────────────────────────────
+  // ── Produits & Calcul du Total ─────────────────────
   const itemsRaw = parsePurchase(purchase)
-  console.log(`  📋 Parsed ${itemsRaw.length} item(s) from achat field:`, itemsRaw)
-
   const cartItems: { productId: number; qty: number; attributeId: number; price: number; name: string; reference: string }[] = []
   let totalProducts = 0
 
   for (const item of itemsRaw) {
     const product = await getProductByReference(item.reference)
+    if (!product) continue
 
-    if (!product) {
-      console.warn(`  ⚠️ Product not found in PrestaShop: "${item.reference}" — skipping`)
-      continue
-    }
-
-    // Look up the real combination ID and its price impact
     const { id: attributeId, priceImpact } = await getProductAttributeId(product.id, item.attribute)
-
     const finalUnitPrice = product.price + priceImpact
-    const lineTotal = finalUnitPrice * item.qty
-    totalProducts += lineTotal
-
-    console.log(
-      `  ✅ ${item.reference} (id=${product.id}) × ${item.qty}` +
-      `  attr="${item.attribute}" → combId=${attributeId}` +
-      `  price=${finalUnitPrice.toFixed(2)} → line=${lineTotal.toFixed(2)}`
-    )
+    totalProducts += (finalUnitPrice * item.qty)
 
     cartItems.push({
       productId: product.id,
@@ -624,45 +692,73 @@ async function processRow(row: CsvOrder) {
     })
   }
 
-  if (!cartItems.length) throw new Error(`Cart is empty for ${email} — no products found (references: ${itemsRaw.map(i => i.reference).join(", ")})`)
+  if (!cartItems.length) throw new Error(`Panier vide pour ${email}`)
 
-  console.log(`  💰 Total products: ${totalProducts.toFixed(6)}`)
+  // ── Panier ──────────────────────────────────────────
+  // Si pas d'etat: on reutilise un panier ouvert. Si etat: on cree un nouveau panier pour isoler.
+  let cartId: number | null = null
+  let createdNewCart = false
 
-  // ── Add items to cart ─────────────────────────────
-  const secureKey = await addToCart(cartId, customerId, addressId, cartItems)
-  console.log("🛒 Items added to cart (secure_key extracted)")
+  if (!hasEtat) {
+    cartId = await findOpenCartId(customerId)
+  }
 
-  // ── Create order from cart ────────────────────────
-  // If no status -> keep only cart
-if (!hasEtat) {
-  console.log("🛒 No status => cart only:", cartId)
-  return 0
+  if (cartId) {
+    console.log("🛒 Panier existant réutilisé:", cartId)
+  } else {
+    cartId = await createCart(customerId, addressId, orderDate, cartItems)
+    createdNewCart = true
+    console.log("🛒 Panier créé avec date:", cartId)
+  }
+
+  // ── Ajout au panier (si panier deja existant) ─────────────────────────────
+  let secureKey = ''
+  if (cartId) {
+    if (createdNewCart) {
+      secureKey = await getCartSecureKey(cartId)
+    } else {
+      secureKey = await addToCart(cartId, customerId, addressId, cartItems)
+    }
+  }
+
+  if (!hasEtat) {
+    console.log("🛒 Pas d'état => Fin au panier:", cartId)
+    return 0
+  }
+
+  /**
+   * ÉTAPE A : Création de la commande technique
+   * On utilise l'état 10 et ps_checkpayment pour bloquer le bug du double paiement.
+   */
+  const orderId = await createOrder(
+    cartId,
+    customerId,
+    addressId,
+    10, 
+    { module: "ps_checkpayment", label: "Import Initial" }, 
+    totalProducts,
+    secureKey,
+    cartItems,
+    orderDate
+  )
+
+  /**
+   * ÉTAPE B : Forçage de la date de commande
+   * Indispensable car PrestaShop écrase souvent la date au moment du POST.
+   */
+  await forceOrderDate(orderId, orderDate)
+  console.log(`⏰ Date commande forcée au ${orderDate}`)
+
+  /**
+   * ÉTAPE C : Validation finale
+   * On applique le vrai état et le vrai module.
+   */
+  await updateOrderState(orderId, finalStateId, finalPayment)
+
+  console.log(`✅ IMPORT RÉUSSI : Commande #${orderId} finalisée.`)
+
+  return orderId
 }
-
-// Create real order
-const orderId = await createOrder(
-  cartId,
-  customerId,
-  addressId,
-  stateId,
-  payment,
-  totalProducts,
-  secureKey,
-  cartItems,
-  orderDate
-)
-
-console.log("✅ ORDER CREATED:", orderId)
-
-await forceOrderDate(orderId, orderDate); 
-console.log(`⏰ Order date forced to ${orderDate}`);
-await updateOrderState(orderId, stateId)
-
-console.log(`✅ ORDER STATUS UPDATED to ${stateId}`)
-
-return orderId
-}
-
 /* =====================================================
    IMPORT LOOP
 ===================================================== */

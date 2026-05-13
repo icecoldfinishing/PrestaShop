@@ -1,7 +1,7 @@
 import { ref, computed } from 'vue';
 
 // État réactif pour le client connecté
-export const loggedCustomer = ref(JSON.parse(localStorage.getItem('loggedCustomer') || 'null'));
+export const loggedCustomer = ref(null);
 
 // Getters utiles
 export const isLoggedIn = computed(() => !!loggedCustomer.value);
@@ -12,11 +12,6 @@ export const isLoggedIn = computed(() => !!loggedCustomer.value);
  */
 export function setLoggedCustomer(customer) {
     loggedCustomer.value = customer;
-    if (customer) {
-        localStorage.setItem('loggedCustomer', JSON.stringify(customer));
-    } else {
-        localStorage.removeItem('loggedCustomer');
-    }
 }
 
 /**
@@ -41,16 +36,11 @@ export function isFoGuest() {
     return !!loggedCustomer.value?.guest;
 }
 
-export const loggedAdmin = ref(JSON.parse(localStorage.getItem('loggedAdmin') || 'null'));
+export const loggedAdmin = ref(null);
 export const isAdminLoggedIn = computed(() => !!loggedAdmin.value);
 
 export function setLoggedAdmin(admin) {
     loggedAdmin.value = admin;
-    if (admin) {
-        localStorage.setItem('loggedAdmin', JSON.stringify(admin));
-    } else {
-        localStorage.removeItem('loggedAdmin');
-    }
 }
 
 export function adminLogout() {

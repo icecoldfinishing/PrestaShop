@@ -54,6 +54,24 @@ const orders = [
         etat: ''
     },
     {
+        date: '09/05/2026',
+        nom: 'Rakoto',
+        email: 'rakoto@yopmail.com',
+        pwd: 'XvzsX5O0!GBD0uXQ',
+        adresse: 'Andoharanofotsy',
+        achat: '[("T_01";1;"kely")]',
+        etat: ''
+    },
+    {
+        date: '09/05/2026',
+        nom: 'Rakoto',
+        email: 'rakoto@yopmail.com',
+        pwd: 'XvzsX5O0!GBD0uXQ',
+        adresse: 'Andoharanofotsy',
+        achat: '[("M_02";1;"")]',
+        etat: ''
+    },
+    {
         date: '16/04/2026',
         nom: 'Rajao',
         email: 'rajao1970@yopmail.com',

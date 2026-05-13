@@ -60,17 +60,7 @@ const PAGE = {
   BO_RESET: "data-reset",
 };
 
-function resolveInitialFoPage() {
-  try {
-    const raw = localStorage.getItem("loggedCustomer");
-    if (!raw || raw === "null") return PAGE.FO_USER_PICK;
-    return PAGE.FO_HOME;
-  } catch {
-    return PAGE.FO_USER_PICK;
-  }
-}
-
-const currentPage = ref(resolveInitialFoPage());
+const currentPage = ref(PAGE.FO_USER_PICK);
 const loginPrefillEmail = ref("");
 
 /* ================= DATA ================= */

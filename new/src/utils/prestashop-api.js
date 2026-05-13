@@ -15,7 +15,6 @@ const parser = new XMLParser({
 });
 
 const builder = new XMLBuilder();
-const CART_STORAGE_KEY = 'fo_cart';
 const DEFAULT_SHOP_ID = 1;
 const DEFAULT_SHOP_GROUP_ID = 1;
 const DEFAULT_CURRENCY_ID = 1;
@@ -491,6 +490,31 @@ export async function psGetCustomerSecureKey(customerId) {
   return getXmlText(data?.prestashop?.customer?.secure_key) || '';
 }
 
+async function psGetTaxMultiplier(taxRulesGroupId) {
+  try {
+    const resRules = await psGet('tax_rules', '', {
+      display: '[id_tax]',
+      'filter[id_tax_rules_group]': `[${taxRulesGroupId}]`
+    });
+    const rule = resRules?.prestashop?.tax_rules?.tax_rule;
+    const idTax = Array.isArray(rule) ? getXmlText(rule[0]?.id_tax) : getXmlText(rule?.id_tax);
+    if (!idTax) return 1;
+
+    const resTax = await psGet('taxes', idTax);
+    const rate = parseFloat(getXmlText(resTax?.prestashop?.tax?.rate) || '0');
+    if (!Number.isFinite(rate)) return 1;
+    return 1 + (rate / 100);
+  } catch {
+    return 1;
+  }
+}
+
+export async function psGetProductTaxMultiplier(product) {
+  const groupId = getXmlText(product?.id_tax_rules_group || product?.id_tax_rules_group_id);
+  if (!groupId) return 1;
+  return psGetTaxMultiplier(groupId);
+}
+
 /** Clé de sécurité du panier — obligatoire sur une commande liée à ce panier (pas la clé client). */
 export async function psGetCartSecureKey(cartId) {
   if (!cartId) return '';
@@ -537,15 +561,19 @@ export async function psLoadCartItems(cartId) {
 
   const productIds = rawRows.map((row) => cleanId(row.id_product)).filter(Boolean);
   const products = await Promise.all(
-    productIds.map((pid) => psGet('products', pid, { display: '[id,price,name,reference]' }))
+    productIds.map((pid) => psGet('products', pid, { display: '[id,price,name,reference,id_tax_rules_group]' }))
   );
 
-  return rawRows.map((row, idx) => {
+  return await Promise.all(rawRows.map(async (row, idx) => {
     const pid = cleanId(row.id_product);
     const attr = cleanId(row.id_product_attribute) || '0';
     const qty = Math.max(1, parseInt(getXmlText(row.quantity), 10) || 1);
     const p = products[idx]?.prestashop?.product;
     const priceHt = Number.parseFloat(getXmlText(p?.price) || '0') || 0;
+    const taxMultiplier = await psGetProductTaxMultiplier(p);
+    const impactHt = await psGetCombinationPriceImpact(attr);
+    const priceHtWithImpact = priceHt + impactHt;
+    const priceTtc = priceHtWithImpact * taxMultiplier;
     const name = extractText(p?.name) || 'Produit';
     const reference = getXmlText(p?.reference) || '';
     const cartIdKey = `${pid}-${attr}`;
@@ -556,10 +584,22 @@ export async function psLoadCartItems(cartId) {
       id_attribute: attr,
       name,
       reference,
-      price: priceHt,
+      price: priceTtc,
       quantity: qty,
     };
-  });
+  }));
+}
+
+async function psGetCombinationPriceImpact(combinationId) {
+  const cleaned = cleanId(combinationId);
+  if (!cleaned || cleaned === '0') return 0;
+  try {
+    const res = await psGet('combinations', cleaned, { display: '[id,price]' });
+    const combo = res?.prestashop?.combination;
+    return Number.parseFloat(getXmlText(combo?.price) || '0') || 0;
+  } catch {
+    return 0;
+  }
 }
 
 export async function psEnsureCustomerAddress(customer, defaults = {}) {
@@ -658,11 +698,16 @@ export async function psGetProductFullDetails(productId) {
     // --- Variants (Combinations) ---
     // Dans psGetProductFullDetails, remplace la partie --- Variants --- par ceci :
     const pCombos = [].concat(p.associations?.combinations?.combination || []);
-    const groupedVariants = {}; // Nouvel objet de regroupement
+    const groupedVariants = {};
+    const combinations = [];
 
     for (const combo of pCombos) {
-      const comboDetail = await psGet('combinations', cleanId(combo.id));
-      const attrValues = [].concat(comboDetail?.prestashop?.combination?.associations?.product_option_values?.product_option_value || []);
+      const comboId = cleanId(combo.id);
+      const comboDetail = await psGet('combinations', comboId);
+      const comboData = comboDetail?.prestashop?.combination;
+      const attrValues = [].concat(comboData?.associations?.product_option_values?.product_option_value || []);
+
+      const optionMap = {};
 
       for (const av of attrValues) {
         const attrValData = await psGet('product_option_values', cleanId(av.id));
@@ -672,13 +717,20 @@ export async function psGetProductFullDetails(productId) {
         const valueName = extractText(avData?.name);
 
         if (!groupedVariants[groupName]) {
-          groupedVariants[groupName] = new Set(); // Set pour éviter les doublons
+          groupedVariants[groupName] = new Set();
         }
         groupedVariants[groupName].add(valueName);
+        optionMap[groupName] = valueName;
       }
+
+      combinations.push({
+        id: comboId,
+        reference: getXmlText(comboData?.reference),
+        priceImpact: Number.parseFloat(getXmlText(comboData?.price) || '0') || 0,
+        options: optionMap
+      });
     }
 
-    // Convertir les Sets en Tableaux pour Vue
     const variants = {};
     for (const key in groupedVariants) {
       variants[key] = Array.from(groupedVariants[key]);
@@ -687,7 +739,8 @@ export async function psGetProductFullDetails(productId) {
     return {
       raw: p,
       features,
-      variants // Maintenant un objet { "Taille": [...], "Couleur": [...] }
+      variants,
+      combinations
     };
 
   } catch (error) {
@@ -695,43 +748,6 @@ export async function psGetProductFullDetails(productId) {
     throw error;
   }
 }
-
-// Modifier buildCartKey pour qu'elle soit stricte
-const buildCartKey = (ownerId) => {
-  if (!ownerId) return `${CART_STORAGE_KEY}_guest`;
-  return `${CART_STORAGE_KEY}_user_${ownerId}`;
-};
-
-const loadCartState = (ownerId) => {
-  try {
-    const raw = localStorage.getItem(buildCartKey(ownerId));
-    if (!raw) return { items: [], psCartId: null, total: 0, count: 0 };
-    
-    const parsed = JSON.parse(raw);
-    return {
-      items: Array.isArray(parsed.items) ? parsed.items : [],
-      psCartId: parsed.psCartId || null, // Récupération de l'ID spécifique
-      total: Number(parsed.total) || 0,
-      count: Number(parsed.count) || 0,
-    };
-  } catch {
-    return { items: [], psCartId: null, total: 0, count: 0 };
-  }
-};
-
-// Dans prestashop-api.js
-const persistCart = (state) => {
-  // On utilise l'ownerId actuel pour définir la clé de stockage
-  const key = buildCartKey(state.ownerId);
-  localStorage.setItem(key, JSON.stringify({
-    items: state.items,
-    psCartId: state.psCartId, // Crucial : sauvegarder l'ID PrestaShop aussi
-    total: Number(state.total) || 0,
-    count: Number(state.count) || 0,
-  }));
-};
-
-const initialCart = loadCartState(null);
 
 // Dans prestashop-api.js
 
@@ -757,18 +773,13 @@ export const cart = reactive({
     this.count = 0;
     this.ownerId = nextOwner;
 
-    // 2. Charger les données spécifiques à ce nouvel ownerId
-    const saved = loadCartState(this.ownerId);
-    this.items = saved.items || [];
-    this.psCartId = saved.psCartId || null; // On récupère l'ID PS propre à cet utilisateur
-
-    // 3. Si aucun panier local, tenter de récupérer un panier PS non commandé
-    if (this.ownerId && !this.psCartId) {
+    // 2. Charger le panier PS non commandé
+    if (this.ownerId) {
       this.psCartId = await psFindOpenCartId(this.ownerId);
     }
 
-    // 4. Si panier PS trouvé et pas d'items locaux, hydrater depuis PS
-    if (this.ownerId && this.psCartId && this.items.length === 0) {
+    // 3. Hydrater depuis PS si panier trouvé
+    if (this.ownerId && this.psCartId) {
       this.items = await psLoadCartItems(this.psCartId);
     }
 
@@ -815,9 +826,10 @@ export const cart = reactive({
   // La fonction CLÉ : Synchronise l'état local vers la DB PrestaShop
 
   async syncWithPrestaShop() {
-    this.updateTotals();
-
-    if (!this.ownerId) return;
+    if (!this.ownerId) {
+      this.updateTotals();
+      return;
+    }
 
     const itemsForApi = this.items.map(item => ({
       id: item.id,
@@ -844,15 +856,19 @@ export const cart = reactive({
       }
 
       console.log(`Panier PrestaShop synchronisé : #${this.psCartId}`);
+      if (this.psCartId) {
+        this.items = await psLoadCartItems(this.psCartId);
+      }
     } catch (err) {
       console.error("Erreur synchro panier PrestaShop:", err);
     }
+
+    this.updateTotals();
   },
 
   updateTotals() {
     this.total = this.items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
     this.count = this.items.reduce((sum, item) => sum + item.quantity, 0);
-    persistCart(this);
   },
 
   clear() {
@@ -861,10 +877,6 @@ export const cart = reactive({
     this.updateTotals();
   }
 });
-
-if (cart.items.length) {
-  cart.updateTotals();
-}
 
 export async function psCreateCart(customerId, items, addressId) {
   const cartData = {
