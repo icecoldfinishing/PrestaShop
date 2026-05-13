@@ -238,7 +238,7 @@ const clearCart = () => {
                                 </div>
                                 <div class="col-2">
                                     <div class="input-group input-group-sm">
-                                        <span class="input-group-text">Qté</span>
+                                        <span class="input-group-text"></span>
                                         <input
                                             class="form-control"
                                             type="number"

@@ -2,15 +2,13 @@
 import { ref } from 'vue'
 import { runImport as runProductImport } from '../../../services/ProductImport.service'
 import { runCombinationImport } from '../../../services/CombinationImport.service'
-import { importImagesFromZip } from '../../../services/ImageImport.service'
 
 /* --- ÉTATS --- */
 const loading = ref(false)
 const logs = ref<string[]>([])
-const importType = ref<'products' | 'combinations' | 'images'>('products')
-const selectedFile = ref<File | null>(null)
+const importType = ref<'products' | 'combinations'>('products')
 
-/* --- DONNÉES FIXES (Produits & Déclinaisons) --- */
+/* --- DONNÉES FIXES --- */
 const products = [
     { nom: 'Tshirt', reference: 'T_01', prix_ttc: 12.5, taxe: 11.65, prix_achat: 8.5 },
     { nom: 'Pantalon', reference: 'P_01', prix_ttc: 18.99, taxe: 11.65, prix_achat: 14.33 },
@@ -27,41 +25,20 @@ const combinations = [
 
 const addLog = (m: string) => logs.value.unshift(m)
 
-/* --- GESTION FICHIER --- */
-const onFileChange = (e: Event) => {
-    const target = e.target as HTMLInputElement
-    if (target.files && target.files[0]) {
-        selectedFile.value = target.files[0]
-        addLog(`📁 Fichier sélectionné : ${selectedFile.value.name}`)
-    }
-}
-
 /* --- FONCTION DE LANCEMENT --- */
 async function startGlobalImport() {
     loading.value = true
-    logs.value = [`🚀 Début de l'opération...`]
+    logs.value = [`🚀 Début de l'importation complète...`]
 
     try {
         if (importType.value === 'products') {
             addLog(`📦 Mode : Tous les Produits (${products.length})`)
             await runProductImport(products, addLog)
-        } 
-        else if (importType.value === 'combinations') {
+        } else {
             addLog(`🧩 Mode : Toutes les Déclinaisons (${combinations.length})`)
             await runCombinationImport(combinations, addLog)
-        } 
-        else if (importType.value === 'images') {
-            if (!selectedFile.value) {
-                throw new Error("Veuillez sélectionner un fichier ZIP d'images.")
-            }
-            addLog(`🖼️ Mode : Importation des images depuis ${selectedFile.value.name}`)
-            const result = await importImagesFromZip(selectedFile.value, (done, total) => {
-                addLog(`Progression : ${done}/${total} images traitées...`)
-            })
-            addLog(`✅ Terminé ! Succès: ${result.success}, Échecs: ${result.failed}`)
         }
-        
-        addLog("🎉 Opération terminée !")
+        addLog("🎉 Importation terminée !")
     } catch (e: any) {
         addLog(`❌ ERREUR : ${e.message}`)
     } finally {
@@ -75,55 +52,38 @@ async function startGlobalImport() {
         <div class="bg-white p-8 rounded-2xl shadow-xl border">
             <h1 class="text-2xl font-bold mb-6 text-slate-800 text-center">Panel d'Importation</h1>
 
-            <div class="grid grid-cols-3 gap-4 mb-8">
+            <!-- Choix du type d'import -->
+            <div class="grid grid-cols-2 gap-4 mb-8">
                 <label :class="['flex flex-col items-center p-4 border-2 rounded-xl cursor-pointer transition-all', importType === 'products' ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-200 text-gray-400']">
                     <input type="radio" value="products" v-model="importType" class="hidden">
                     <span class="text-3xl mb-2">📦</span>
-                    <span class="text-xs font-bold text-center">PRODUITS</span>
+                    <span class="font-bold">TOUS LES PRODUITS</span>
                 </label>
 
                 <label :class="['flex flex-col items-center p-4 border-2 rounded-xl cursor-pointer transition-all', importType === 'combinations' ? 'border-purple-500 bg-purple-50 text-purple-700' : 'border-gray-200 text-gray-400']">
                     <input type="radio" value="combinations" v-model="importType" class="hidden">
                     <span class="text-3xl mb-2">🧩</span>
-                    <span class="text-xs font-bold text-center">DÉCLINAISONS</span>
-                </label>
-
-                <label :class="['flex flex-col items-center p-4 border-2 rounded-xl cursor-pointer transition-all', importType === 'images' ? 'border-emerald-500 bg-emerald-50 text-emerald-700' : 'border-gray-200 text-gray-400']">
-                    <input type="radio" value="images" v-model="importType" class="hidden">
-                    <span class="text-3xl mb-2">🖼️</span>
-                    <span class="text-xs font-bold text-center">IMAGES (ZIP)</span>
+                    <span class="font-bold">TOUTES LES DÉCLINAISONS</span>
                 </label>
             </div>
 
-            <div v-if="importType === 'images'" class="mb-8 p-4 border-2 border-dashed border-emerald-200 rounded-xl bg-emerald-50/30">
-                <p class="text-sm font-bold text-emerald-800 mb-2">Sélectionnez le dossier ZIP :</p>
-                <input 
-                    type="file" 
-                    accept=".zip" 
-                    @change="onFileChange"
-                    class="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-emerald-600 file:text-white hover:file:bg-emerald-700"
-                />
-            </div>
-
+            <!-- Bouton Unique -->
             <button 
                 @click="startGlobalImport" 
                 :disabled="loading"
                 :class="[
                     'w-full py-5 rounded-xl text-white font-black text-lg shadow-lg transition-all active:scale-95 mb-8',
-                    importType === 'products' ? 'bg-blue-600 hover:bg-blue-700' : 
-                    importType === 'combinations' ? 'bg-purple-600 hover:bg-purple-700' : 'bg-emerald-600 hover:bg-emerald-700',
+                    importType === 'products' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-purple-600 hover:bg-purple-700',
                     loading ? 'opacity-50 cursor-not-allowed' : ''
                 ]"
             >
-                {{ loading ? 'TRAITEMENT EN COURS...' : 'LANCER L\'IMPORTATION' }}
+                {{ loading ? 'TRAITEMENT EN COURS...' : 'LANCER L\'IMPORTATION TOTALE' }}
             </button>
 
+            <!-- Console de Logs -->
             <div class="bg-slate-900 rounded-xl p-5 h-72 overflow-y-auto font-mono text-[11px] text-emerald-400 shadow-inner border-t-4 border-slate-700">
                 <div v-for="(l, i) in logs" :key="i" class="mb-1 border-b border-slate-800 pb-1">
                     <span class="opacity-50">[{{ new Date().toLocaleTimeString() }}]</span> {{ l }}
-                </div>
-                <div v-if="logs.length === 0" class="text-slate-500 text-center mt-20 italic">
-                    En attente d'une action...
                 </div>
             </div>
         </div>
