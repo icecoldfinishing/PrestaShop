@@ -455,10 +455,22 @@ async function addToCart(
   return secureKey
 }
 
+async function forceOrderDate(orderId: number, orderDate: string) {
+  // Récupérer d'abord la commande pour avoir le XML complet (sécurité PrestaShop)
+  const getRes = await prestashop.get(`/orders/${orderId}`);
+  let xml = getRes.data.replace(/ xlink:href="[^"]*"/g, "");
+
+  const fullDate = `${orderDate} 10:00:00`;
+
+  // Remplacer les dates dans le XML
+  xml = xml.replace(/<date_add>.*?<\/date_add>/, `<date_add><![CDATA[${fullDate}]]></date_add>`);
+  xml = xml.replace(/<date_upd>.*?<\/date_upd>/, `<date_upd><![CDATA[${fullDate}]]></date_upd>`);
+
+  await safePut(`/orders/${orderId}`, xml);
+}
 /* =====================================================
    ORDER CREATION
 ===================================================== */
-
 async function createOrder(
   cartId: number,
   customerId: number,
@@ -467,15 +479,12 @@ async function createOrder(
   payment: { module: string; label: string },
   totalProducts: number,
   secureKey: string,
-  items: { productId: number; qty: number; attributeId: number; price: number; name: string; reference: string }[]
+  items: { productId: number; qty: number; attributeId: number; price: number; name: string; reference: string }[],
+  orderDate: string 
 ) {
-  // Formatage des montants pour PrestaShop (6 décimales)
   const tp = totalProducts.toFixed(6);
-  
-  // On considère payé réellement si l'état est "Accepté" (2) ou "Livré" (5) ou "Paiement à distance" (11)
   const totalPaidReal = (stateId === 2 || stateId === 5 || stateId === 11) ? tp : "0.000000";
 
-  // Construction des lignes de produits
   let orderRows = "";
   for (const item of items) {
     orderRows += `
@@ -491,39 +500,28 @@ async function createOrder(
       </order_row>`;
   }
 
+  const fullDate = `${orderDate} 10:00:00`; 
+
   const xml = `
 <prestashop>
   <order>
     <id_address_delivery>${addressId}</id_address_delivery>
     <id_address_invoice>${addressId}</id_address_invoice>
     <id_cart>${cartId}</id_cart>
+    <id_currency>1</id_currency> <id_lang>1</id_lang>
     <id_customer>${customerId}</id_customer>
-    <id_currency>1</id_currency>
-    <id_lang>1</id_lang>
     <id_carrier>1</id_carrier>
     <current_state>${stateId}</current_state>
-    <secure_key><![CDATA[${secureKey}]]></secure_key>
     <module><![CDATA[${payment.module}]]></module>
     <payment><![CDATA[${payment.label}]]></payment>
     <total_paid>${tp}</total_paid>
     <total_paid_real>${totalPaidReal}</total_paid_real>
-    <total_paid_tax_incl>${tp}</total_paid_tax_incl>
-    <total_paid_tax_excl>${tp}</total_paid_tax_excl>
     <total_products>${tp}</total_products>
     <total_products_wt>${tp}</total_products_wt>
-    <total_shipping>0.000000</total_shipping>
-    <total_shipping_tax_incl>0.000000</total_shipping_tax_incl>
-    <total_shipping_tax_excl>0.000000</total_shipping_tax_excl>
-    <total_discounts>0.000000</total_discounts>
-    <total_discounts_tax_incl>0.000000</total_discounts_tax_incl>
-    <total_discounts_tax_excl>0.000000</total_discounts_tax_excl>
-    <total_wrapping>0.000000</total_wrapping>
-    <total_wrapping_tax_incl>0.000000</total_wrapping_tax_incl>
-    <total_wrapping_tax_excl>0.000000</total_wrapping_tax_excl>
-    <carrier_tax_rate>0.000</carrier_tax_rate>
     <conversion_rate>1.000000</conversion_rate>
-    <id_shop>1</id_shop>
-    <id_shop_group>1</id_shop_group>
+    <secure_key><![CDATA[${secureKey}]]></secure_key>
+    <date_add>${fullDate}</date_add>
+    <date_upd>${fullDate}</date_upd>
     <associations>
       <order_rows>
         ${orderRows}
@@ -532,8 +530,6 @@ async function createOrder(
   </order>
 </prestashop>`;
 
-  // Envoi de la requête à l'API (utilisation de ton instance axios/prestashop)
-  // safePost doit être ton helper qui gère le ws_key
   const res = await safePost("/orders", xml);
   return extractId(res);
 }
@@ -652,11 +648,14 @@ const orderId = await createOrder(
   payment,
   totalProducts,
   secureKey,
-  cartItems
+  cartItems,
+  orderDate
 )
 
 console.log("✅ ORDER CREATED:", orderId)
 
+await forceOrderDate(orderId, orderDate); 
+console.log(`⏰ Order date forced to ${orderDate}`)
 await updateOrderState(orderId, stateId)
 
 console.log(`✅ ORDER STATUS UPDATED to ${stateId}`)
