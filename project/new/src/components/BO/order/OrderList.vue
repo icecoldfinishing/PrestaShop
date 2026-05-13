@@ -3,272 +3,271 @@ import { ref, computed, onMounted } from 'vue';
 import { getXmlText, psGet, psUpdateOrderState } from '../../../utils/prestashop-api';
 
 const orders = ref([]);
+const carts = ref([]);
 const orderStates = ref([]);
 const loading = ref(false);
 const updatingId = ref(null);
-const errorMsg = ref('');
 
-/* ===================== SYNC STATE MAP ===================== */
 const orderStateMap = ref({});
 
-const normalize = (value) => String(value || '').trim().toLowerCase();
+const normalize = (v) => String(v || '').trim().toLowerCase();
 
 /* ===================== STATE NAME ===================== */
 const getStateName = (state) => {
     const name = state?.name?.language;
-    if (Array.isArray(name)) {
-        return getXmlText(name[0]);
-    }
-    return getXmlText(name);
+    return Array.isArray(name)
+        ? getXmlText(name[0])
+        : getXmlText(name);
 };
 
-/* ===================== ORDERS ===================== */
+/* ===================== LOAD ORDERS ===================== */
 const getAllOrders = async () => {
-    loading.value = true;
+    const data = await psGet('orders', '', {
+        display: '[id,id_customer,total_paid,current_state,date_add]',
+    });
 
-    try {
-        const data = await psGet('orders', '', {
-            display: '[id,id_customer,total_paid,current_state,date_add]',
-        });
+    const list = data?.prestashop?.orders?.order;
+    const arr = list ? (Array.isArray(list) ? list : [list]) : [];
 
-        const orderData = data?.prestashop?.orders?.order;
+    orders.value = arr.map(o => {
+        const id = String(o.id);
+        const state = getXmlText(o.current_state);
 
-        if (!orderData) {
-            orders.value = [];
-            return;
-        }
+        orderStateMap.value[id] = state;
 
-        const ordersArray = Array.isArray(orderData)
-            ? orderData
-            : [orderData];
+        return {
+            id,
+            type: 'order',
+            id_customer: getXmlText(o.id_customer),
+            total_paid: parseFloat(o.total_paid || 0).toFixed(2),
+            current_state: state,
+            date_add: getXmlText(o.date_add),
+        };
+    });
+};
 
-        orders.value = ordersArray.map((o) => {
-            const id = String(o.id);
-            const state = getXmlText(o.current_state);
+/* ===================== LOAD CARTS ===================== */
+const getAllCarts = async () => {
+    const data = await psGet('carts', '', {
+        display: '[id,id_customer,date_add]',
+    });
 
-            // 🔥 sync state map
-            orderStateMap.value[id] = state;
+    const list = data?.prestashop?.carts?.cart;
+    const arr = list ? (Array.isArray(list) ? list : [list]) : [];
+
+    carts.value = arr
+        .filter(c => {
+            const id = String(c.id);
+            return !orders.value.some(o => o.id === id);
+        })
+        .map(c => {
+            const id = String(c.id);
+
+            orderStateMap.value[id] = 'cart';
 
             return {
                 id,
-                id_customer: getXmlText(o.id_customer),
-                total_paid: parseFloat(o.total_paid || 0).toFixed(2),
-                current_state: state,
-                date_add: getXmlText(o.date_add),
+                type: 'cart',
+                id_customer: getXmlText(c.id_customer),
+                total_paid: '0.00',
+                current_state: 'cart',
+                date_add: getXmlText(c.date_add),
             };
         });
-
-    } catch (error) {
-        console.error(error);
-        errorMsg.value = 'Erreur chargement commandes';
-    } finally {
-        loading.value = false;
-    }
 };
 
 /* ===================== ORDER STATES ===================== */
 const getAllOrderStates = async () => {
-    try {
-        const data = await psGet('order_states', '', {
-            display: 'full',
-        });
+    const data = await psGet('order_states', '', { display: 'full' });
 
-        const stateData = data?.prestashop?.order_states?.order_state;
+    const list = data?.prestashop?.order_states?.order_state;
+    const arr = list ? (Array.isArray(list) ? list : [list]) : [];
 
-        if (!stateData) {
-            orderStates.value = [];
-            return;
-        }
-
-        const stateArray = Array.isArray(stateData)
-            ? stateData
-            : [stateData];
-
-        orderStates.value = stateArray.map((state) => ({
-            id: String(state.id),
-            name: getStateName(state),
-        }));
-
-    } catch (error) {
-        console.error(error);
-    }
+    orderStates.value = arr.map(s => ({
+        id: String(s.id),
+        name: getStateName(s),
+    }));
 };
-
-const stateOptions = computed(() => orderStates.value);
 
 /* ===================== FIND STATES ===================== */
-/**
- * États alignés sur l'import BO : dans le panier, paiement effectué, annulé.
- * Ordre des mots-clés : du plus spécifique au plus générique.
- */
 const findStateId = (keywords) => {
-    const match = orderStates.value.find((state) => {
-        const label = normalize(state.name);
-        return keywords.some((k) => label.includes(normalize(k)));
-    });
-
-    return match ? match.id : null;
+    return orderStates.value.find(s =>
+        keywords.some(k => normalize(s.name).includes(normalize(k)))
+    )?.id || null;
 };
 
-/** i. Dans le panier */
 const inCartStateId = computed(() =>
-    findStateId(['dans le panier', 'en panier', 'panier', 'cart', 'awaiting'])
+    findStateId(['panier', 'cart'])
 );
 
-/** ii. Paiement effectué */
 const paidStateId = computed(() =>
-    findStateId([
-        'paiement effectué',
-        'paiement effectue',
-        'paiement accepté',
-        'paiement accepte',
-        'payment accepted',
-        'paiement reçu',
-        'paiement recu',
-    ])
+    findStateId(['paiement accepté', 'payment accepted'])
 );
 
-/** iii. Annulé */
-const canceledStateId = computed(() => findStateId(['annulé', 'annule', 'annul', 'cancel', 'canceled', 'cancelled']));
+const canceledStateId = computed(() =>
+    findStateId(['annulé', 'cancel', 'canceled', 'annule'])
+);
 
-/* ===================== CORE SYNC FUNCTION ===================== */
-const setOrderState = async (orderId, stateId) => {
-    if (!stateId) {
-        alert('Etat indisponible');
-        return;
-    }
+/* ===================== UPDATE STATE ===================== */
+const setOrderState = async (id, stateId) => {
+    if (!stateId) return;
 
-    updatingId.value = orderId;
+    updatingId.value = id;
 
     try {
-        await psUpdateOrderState(orderId, stateId);
+        await psUpdateOrderState(id, stateId);
+        orderStateMap.value[id] = stateId;
 
-        orderStateMap.value[String(orderId)] = stateId;
-
-        await getAllOrders();
-
-    } catch (error) {
-        console.error(error);
-        alert('Erreur update status');
+        await refresh();
     } finally {
         updatingId.value = null;
     }
 };
 
+/* ===================== HELPERS UI ===================== */
+const getActiveStateId = (id) => orderStateMap.value[String(id)] || null;
+
+const isPaid = (id) => getActiveStateId(id) === paidStateId.value;
+const isCanceled = (id) => getActiveStateId(id) === canceledStateId.value;
+const isCart = (id) =>
+    getActiveStateId(id) === 'cart' ||
+    getActiveStateId(id) === inCartStateId.value;
+
 /* ===================== LABEL ===================== */
 const getStateLabel = (stateId) => {
-    const state = orderStates.value.find(s => s.id === String(stateId));
-    return state ? state.name : 'Inconnu';
+    if (stateId === 'cart') return 'Dans le panier';
+
+    return orderStates.value.find(s => s.id === String(stateId))?.name || 'Inconnu';
+};
+
+/* ===================== LIST ===================== */
+const allItems = computed(() => [
+    ...carts.value,
+    ...orders.value,
+]);
+
+/* ===================== REFRESH ===================== */
+const refresh = async () => {
+    loading.value = true;
+
+    try {
+        await getAllOrders();
+        await getAllCarts();
+    } finally {
+        loading.value = false;
+    }
 };
 
 onMounted(async () => {
     await getAllOrderStates();
-    await getAllOrders();
+    await refresh();
 });
 </script>
 
 <template>
-    <div class="container py-4">
-        <h2 class="fw-bold mb-2">Commandes</h2>
-        <p class="text-muted small mb-4">
-            États import : <strong>dans le panier</strong> · <strong>paiement effectué</strong> · <strong>annulé</strong>
-        </p>
+<div class="container py-4">
 
-        <div v-if="orders.length" class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4">
+    <h2 class="fw-bold mb-3">Panier + Commandes</h2>
 
-            <div class="col" v-for="order in orders" :key="order.id">
-                <div class="card h-100 shadow-sm border-0">
-                    <div class="card-body">
+    <div v-if="allItems.length" class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4">
 
-                        <h5 class="fw-bold">Order #{{ order.id }}</h5>
+        <div class="col" v-for="item in allItems" :key="item.type + item.id">
 
-                        <p class="text-muted mb-1">
-                            Customer ID: {{ order.id_customer }}
-                        </p>
+            <div class="card h-100 shadow-sm border-0">
+                <div class="card-body">
 
-                        <!-- STATUS -->
-                        <p class="mb-1">
-                            Status: {{ getStateLabel(orderStateMap[order.id]) }}
-                        </p>
+                    <h5 class="fw-bold">
+                        {{ item.type === 'cart' ? '🛒 Cart' : '📦 Order' }} #{{ item.id }}
+                    </h5>
 
-                        <p class="text-primary fw-bold">
-                            {{ order.total_paid }} €
-                        </p>
+                    <p class="text-muted mb-1">
+                        Customer ID: {{ item.id_customer }}
+                    </p>
 
-                        <p class="text-muted small">
-                            {{ order.date_add }}
-                        </p>
+                    <p class="mb-1">
+                        Status: {{ getStateLabel(getActiveStateId(item.id)) }}
+                    </p>
 
-                        <!-- États import : panier → payé → annulé -->
-                        <div class="d-flex flex-wrap gap-2 mt-3">
+                    <p class="text-primary fw-bold">
+                        {{ item.total_paid }} €
+                    </p>
 
-                            <button
-                                type="button"
-                                class="btn btn-sm"
-                                :class="orderStateMap[order.id] === inCartStateId ? 'btn-secondary' : 'btn-outline-secondary'"
-                                :disabled="updatingId === order.id || !inCartStateId"
-                                @click="setOrderState(order.id, inCartStateId)"
-                            >
-                                Dans le panier
-                            </button>
+                    <p class="text-muted small">
+                        {{ item.date_add }}
+                    </p>
 
-                            <button
-                                type="button"
-                                class="btn btn-sm"
-                                :class="orderStateMap[order.id] === paidStateId ? 'btn-success' : 'btn-outline-success'"
-                                :disabled="updatingId === order.id || !paidStateId"
-                                @click="setOrderState(order.id, paidStateId)"
-                            >
-                                Paiement effectué
-                            </button>
+                    <!-- ================= BUTTONS ================= -->
+                    <div class="d-flex gap-2 mt-3">
 
-                            <button
-                                type="button"
-                                class="btn btn-sm"
-                                :class="orderStateMap[order.id] === canceledStateId ? 'btn-danger' : 'btn-outline-danger'"
-                                :disabled="updatingId === order.id || !canceledStateId"
-                                @click="setOrderState(order.id, canceledStateId)"
-                            >
-                                Annulé
-                            </button>
+                        <button
+                            class="btn btn-sm"
+                            :class="isCart(item.id)
+                                ? 'btn-secondary'
+                                : 'btn-outline-secondary'"
+                            @click="setOrderState(item.id, inCartStateId)"
+                        >
+                            Panier
+                        </button>
 
-                        </div>
+                        <button
+                            class="btn btn-sm"
+                            :class="isPaid(item.id)
+                                ? 'btn-success'
+                                : 'btn-outline-success'"
+                            @click="setOrderState(item.id, paidStateId)"
+                        >
+                            Payé
+                        </button>
 
-                        <!-- ================= SELECT SYNC ================= -->
-                        <div class="mt-2">
-
-                            <label class="form-label small text-muted">
-                                Changer statut
-                            </label>
-
-                            <select
-                                class="form-select form-select-sm"
-                                :value="orderStateMap[order.id]"
-                                :disabled="updatingId === order.id"
-                                @change="setOrderState(order.id, $event.target.value)"
-                            >
-                                <option value="">-- Select --</option>
-
-                                <option
-                                    v-for="state in stateOptions"
-                                    :key="state.id"
-                                    :value="state.id"
-                                >
-                                    {{ state.name }}
-                                </option>
-                            </select>
-
-                        </div>
+                        <button
+                            class="btn btn-sm"
+                            :class="isCanceled(item.id)
+                                ? 'btn-danger'
+                                : 'btn-outline-danger'"
+                            @click="setOrderState(item.id, canceledStateId)"
+                        >
+                            Annulé
+                        </button>
 
                     </div>
+
+                    <!-- ================= DROPDOWN ================= -->
+                    <div class="mt-2">
+
+                        <select
+                            class="form-select form-select-sm"
+                            :value="getActiveStateId(item.id)"
+                            @change="setOrderState(item.id, $event.target.value)"
+                        >
+                            <option value="">Statut</option>
+
+                            <option :value="inCartStateId">
+                                Panier
+                            </option>
+
+                            <option :value="paidStateId">
+                                Paiement accepté
+                            </option>
+
+                            <option :value="canceledStateId">
+                                Annulé
+                            </option>
+
+                        </select>
+
+                    </div>
+
                 </div>
             </div>
 
         </div>
 
-        <div v-else class="text-center py-5 text-muted">
-            <div v-if="loading" class="spinner-border"></div>
-            <div v-else>No orders found</div>
-        </div>
     </div>
+
+    <div v-else class="text-center text-muted py-5">
+        <div v-if="loading" class="spinner-border"></div>
+        <div v-else>Aucun panier / commande</div>
+    </div>
+
+</div>
 </template>
