@@ -111,16 +111,11 @@ const handleCheckout = async () => {
         const addressId = await psEnsureCustomerAddress(loggedCustomer.value);
         if (!addressId) throw new Error('Adresse client introuvable / non créée.');
 
-        const itemsForApi = cart.items.map((item) => ({
-            id: item.id,
-            quantity: item.quantity,
-            id_attribute: item.id_attribute ?? 0,
-        }));
+        await cart.syncWithPrestaShop();
+        const cartId = cart.psCartId;
+        if (!cartId) throw new Error('Panier PrestaShop introuvable.');
 
-        const cartId = await psCreateCart(loggedCustomer.value.id, itemsForApi, addressId);
-        if (!cartId) throw new Error('Création panier PrestaShop sans id.');
-
-        addLog(`Panier PrestaShop #${cartId} créé.`);
+        addLog(`Panier PrestaShop #${cartId} utilisé.`);
 
         const cartSecureKey = await psGetCartSecureKey(cartId);
         if (!cartSecureKey) throw new Error('Impossible de lire la secure_key du panier créé.');
@@ -238,7 +233,7 @@ const clearCart = () => {
                                 </div>
                                 <div class="col-2">
                                     <div class="input-group input-group-sm">
-                                        <span class="input-group-text">Qté</span>
+                                        <span class="input-group-text"></span>
                                         <input
                                             class="form-control"
                                             type="number"

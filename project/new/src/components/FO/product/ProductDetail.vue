@@ -11,10 +11,10 @@ type ProductDetail = {
     description: string;
     imageUrl: string | null;
     features: string[];
-    variants: Record<string, string[]>; 
+    variants: Record<string, string[]>;
 };
 
-const TAX_RATE = 0.2; 
+const TAX_RATE = 0.2;
 const props = defineProps<{ productId: number | null }>();
 // Ajout de l'évenement goToCart pour la redirection/protection
 const emit = defineEmits<{ (e: 'back'): void, (e: 'goToCart'): void }>();
@@ -23,22 +23,33 @@ const product = ref<ProductDetail | null>(null);
 const loading = ref(false);
 const quantity = ref(1);
 
+const addingToCart = ref(false);
+
+const handleCart = (redirect: boolean = false) => {
+    if (!product.value) return;
+    addingToCart.value = true;
+    const qty = Number.isFinite(quantity.value) ? Math.max(1, quantity.value) : 1;
+    cart.add(product.value, qty, { ...selectedOptions })
+        .then(() => {
+            if (redirect) {
+                emit('goToCart');
+            }
+        })
+        .catch(err => {
+            console.error('Error adding to cart:', err);
+            alert('Une erreur est survenue lors de l\'ajout au panier.');
+        })
+        .finally(() => {
+            addingToCart.value = false;
+        });
+};
+
 // Pour stocker les choix de l'utilisateur
 const selectedOptions = reactive<Record<string, string>>({});
 
 const getImageUrl = (productId: number, imageId: string | number | null) => {
     if (!productId || !imageId) return null;
     return `http://localhost:8088/api/images/products/${productId}/${imageId}`;
-};
-
-// FONCTION POUR GERER LE PANIER
-const handleCart = (redirect: boolean = false) => {
-    if (!product.value) return;
-    const qty = Number.isFinite(quantity.value) ? Math.max(1, quantity.value) : 1;
-    cart.add(product.value, qty, { ...selectedOptions });
-    if (redirect) {
-        emit('goToCart');
-    }
 };
 
 const loadProduct = async (id: number | null) => {
@@ -121,12 +132,17 @@ onMounted(() => loadProduct(props.productId ?? null));
 
                 <!-- BOUTONS D'ACTION -->
                 <div class="actions">
+                    <div class="price">
+                        {{ TAX_RATE }} % 
+                    </div>
                     <div class="qty">
                         <label>Quantite</label>
                         <input v-model.number="quantity" type="number" min="1" />
                     </div>
-                    <button class="btn-add" @click="handleCart(false)">Ajouter au panier</button>
-                    <button class="btn-buy" @click="handleCart(true)">Acheter maintenant</button>
+                    <button class="btn-add" :class="{ active: addingToCart }" @click="handleCart(false)">
+                        <span v-if="!addingToCart">Ajouter au panier</span>
+                        <span v-else>Ajout...</span>
+                    </button> <button class="btn-buy" @click="handleCart(true)">Acheter maintenant</button>
                 </div>
 
                 <div class="section specs" v-if="product.features.length > 0">
@@ -147,11 +163,38 @@ onMounted(() => loadProduct(props.productId ?? null));
 
 <style scoped>
 /* Tes styles restent identiques */
-.detail { padding: 24px; font-family: sans-serif; }
-.back { background: #111; color: white; padding: 10px; border-radius: 8px; cursor: pointer; border: none; margin-bottom: 20px;}
-.layout { display: grid; grid-template-columns: 1fr 1.5fr; gap: 30px; }
-.media img { max-width: 100%; border-radius: 8px; }
-.price { font-size: 24px; font-weight: bold; color: #e85d04; margin-bottom: 20px; }
+.detail {
+    padding: 24px;
+    font-family: sans-serif;
+}
+
+.back {
+    background: #111;
+    color: white;
+    padding: 10px;
+    border-radius: 8px;
+    cursor: pointer;
+    border: none;
+    margin-bottom: 20px;
+}
+
+.layout {
+    display: grid;
+    grid-template-columns: 1fr 1.5fr;
+    gap: 30px;
+}
+
+.media img {
+    max-width: 100%;
+    border-radius: 8px;
+}
+
+.price {
+    font-size: 24px;
+    font-weight: bold;
+    color: #e85d04;
+    margin-bottom: 20px;
+}
 
 .selectors {
     display: flex;
@@ -162,20 +205,122 @@ onMounted(() => loadProduct(props.productId ?? null));
     background: #f8f9fa;
     border-radius: 8px;
 }
-.select-group { display: flex; flex-direction: column; }
-.select-group label { font-weight: bold; margin-bottom: 5px; color: #555; }
-.select-group select { padding: 10px; border: 1px solid #ccc; border-radius: 4px; }
 
-.actions { display: flex; gap: 10px; margin-top: 20px; }
-.btn-add, .btn-buy { flex: 1; padding: 15px; border-radius: 8px; font-weight: bold; cursor: pointer; border: none; transition: opacity 0.2s; }
-.btn-add { background: #f0f0f0; color: #111; border: 1px solid #ccc; }
-.btn-buy { background: #e85d04; color: white; }
-.btn-add:hover, .btn-buy:hover { opacity: 0.8; }
-.qty { display: flex; flex-direction: column; gap: 6px; min-width: 120px; }
-.qty label { font-weight: bold; color: #555; }
-.qty input { padding: 10px; border: 1px solid #ccc; border-radius: 6px; }
+.select-group {
+    display: flex;
+    flex-direction: column;
+}
 
-.section { margin-top: 20px; }
-.specs ul { list-style: disc; padding-left: 20px; }
-.desc { line-height: 1.5; }
+.select-group label {
+    font-weight: bold;
+    margin-bottom: 5px;
+    color: #555;
+}
+
+.select-group select {
+    padding: 10px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+}
+
+.actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 20px;
+}
+
+.btn-add,
+.btn-buy {
+    flex: 1;
+    padding: 15px;
+    border-radius: 8px;
+    font-weight: bold;
+    cursor: pointer;
+    border: none;
+    transition: opacity 0.2s;
+}
+
+.btn-add {
+    background: #f0f0f0;
+    color: #111;
+    border: 1px solid #ccc;
+    border-radius: 10px;
+    padding: 15px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    position: relative;
+    overflow: hidden;
+}
+
+
+.btn-buy {
+    background: #e85d04;
+    color: white;
+}
+
+.btn-add:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 15px rgba(0,0,0,0.1);
+}
+
+
+.qty {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 120px;
+}
+
+.qty label {
+    font-weight: bold;
+    color: #555;
+}
+
+.qty input {
+    padding: 10px;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+}
+
+.section {
+    margin-top: 20px;
+}
+
+.specs ul {
+    list-style: disc;
+    padding-left: 20px;
+}
+
+.desc {
+    line-height: 1.5;
+}
+/* Click animation */
+.btn-add:active {
+    transform: scale(0.96);
+}
+
+/* État actif (ajout panier) */
+.btn-add.active {
+    background: #2ecc71;
+    color: white;
+    border-color: #2ecc71;
+    animation: pulse 0.6s ease;
+}
+
+/* Effet pulse */
+@keyframes pulse {
+    0% {
+        transform: scale(1);
+        box-shadow: 0 0 0 rgba(46, 204, 113, 0.5);
+    }
+    50% {
+        transform: scale(1.05);
+        box-shadow: 0 0 20px rgba(46, 204, 113, 0.6);
+    }
+    100% {
+        transform: scale(1);
+        box-shadow: 0 0 0 rgba(46, 204, 113, 0);
+    }
+}
 </style>

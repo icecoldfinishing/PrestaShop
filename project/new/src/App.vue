@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed } from "vue";
+import { ref, computed, watch } from "vue";
 
 import AdminLogin from "./components/BO/auth/auth.vue";
 import CustomerLogin from "./components/FO/auth/login.vue";
@@ -83,6 +83,13 @@ const isAdmin = computed(() => !!loggedAdmin.value);
 const isCustomer = computed(() => !!loggedCustomer.value);
 
 cart.setOwner(loggedCustomer.value?.id || null);
+
+watch(
+  () => loggedCustomer.value?.id || null,
+  async (nextId) => {
+    await cart.setOwner(nextId);
+  }
+);
 
 /* ================= PRODUCTS ================= */
 const openEditProduct = (id) => {
@@ -172,7 +179,8 @@ const handleFoGuest = () => {
 
 const onChooseFoLogin = (email) => {
   loginPrefillEmail.value = email;
-  currentPage.value = PAGE.FO_LOGIN;
+  cart.setOwner(loggedCustomer.value?.id || null);
+  currentPage.value = PAGE.FO_HOME;
 };
 
 const backToFoUserPick = () => {

@@ -1,6 +1,8 @@
 <script setup>
 import { ref, onMounted } from 'vue';
-import { psGetActiveCustomersBrief } from '../../../utils/prestashop-api';
+import { psGetActiveCustomersBrief , psLoginCustomerWithoutPassword } from '../../../utils/prestashop-api';
+import { setLoggedCustomer } from '../../../utils/auth-state';
+
 
 const emit = defineEmits(['choose-login', 'guest']);
 
@@ -22,8 +24,16 @@ const load = async () => {
     }
 };
 
-const pickUser = (email) => {
-    emit('choose-login', email);
+const loginWithoutPassword = async (email) => {
+    try {
+        const customer = await psLoginCustomerWithoutPassword(email);
+        customers.value = customers.value.filter(c => c.email !== email);
+        setLoggedCustomer(customer);
+        emit('choose-login', email);
+    } catch (e) {
+        console.error(e);
+        errorMsg.value = 'Échec de la connexion sans mot de passe.';
+    }
 };
 
 const goGuest = () => {
@@ -56,7 +66,7 @@ onMounted(load);
                     :key="c.id"
                     type="button"
                     class="list-group-item list-group-item-action d-flex justify-content-between align-items-center py-3"
-                    @click="pickUser(c.email)"
+                    @click="loginWithoutPassword(c.email)"
                 >
                     <div class="text-start">
                         <div class="fw-semibold">{{ c.firstname }} {{ c.lastname }}</div>
