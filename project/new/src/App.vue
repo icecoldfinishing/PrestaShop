@@ -32,7 +32,7 @@ import "bootstrap/dist/css/bootstrap.min.css";
 import "bootstrap/dist/js/bootstrap.bundle.min.js";
 
 /* ================= MODE ================= */
-const mode = ref("BO");
+const mode = ref("FO");
 
 /* ================= PAGE STATE ================= */
 const PAGE = {
@@ -64,15 +64,13 @@ function resolveInitialFoPage() {
   try {
     const raw = localStorage.getItem("loggedCustomer");
     if (!raw || raw === "null") return PAGE.FO_USER_PICK;
-    //return PAGE.FO_HOME;
-    return PAGE.BO_CSV;
+    return PAGE.FO_HOME;
   } catch {
-    //return PAGE.FO_USER_PICK;
-    return PAGE.BO_CSV;
+    return PAGE.FO_USER_PICK;
   }
 }
 
-const currentPage = PAGE.BO_CSV;
+const currentPage = ref(resolveInitialFoPage());
 const loginPrefillEmail = ref("");
 
 /* ================= DATA ================= */
@@ -174,7 +172,8 @@ const handleFoGuest = () => {
 
 const onChooseFoLogin = (email) => {
   loginPrefillEmail.value = email;
-  currentPage.value = PAGE.FO_LOGIN;
+  cart.setOwner(loggedCustomer.value?.id || null);
+  currentPage.value = PAGE.FO_HOME;
 };
 
 const backToFoUserPick = () => {

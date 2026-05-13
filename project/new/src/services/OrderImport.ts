@@ -26,6 +26,14 @@ const getPurchase = (r: any) => getValue(r, ["achat"])
 const getEtat = (r: any) => String(getValue(r, ["etat", "status", "état"]) ?? "").trim()
 const getDate = (r: any) => String(getValue(r, ["date"]) ?? "").trim()
 
+const getCleanPaymentMethod = (row: any) => {
+  const etat = getEtat(row).toLowerCase();
+  if (etat.includes("chèque") || etat.includes("cheque") || etat.includes("check")) {
+    return "Cheque";
+  }
+  return "Paiement par virement bancaire"; 
+};
+
 /* =====================================================
    ORDER STATE MAPPING  (French → PrestaShop state ID)
    Default PS states:
@@ -41,23 +49,36 @@ const getDate = (r: any) => String(getValue(r, ["date"]) ?? "").trim()
      10 = Awaiting bank wire payment
 ===================================================== */
 
-function mapEtatToStateId(etat: string): number {
-  const s = etat.toLowerCase().trim()
+function mapEtatToOrderData(etat: string) {
+  const s = etat.toLowerCase().trim();
+  
+  // Initialisation des données par défaut (Virement)
+  let stateId = 2; // Paiement accepté par défaut
+  let payment = { module: 'ps_wirepayment', label: 'Virement bancaire' };
 
-  // Flexible keyword matches
-  if (s.includes("livraison") || s.includes("cod")) return 13
-  if (s.includes("accept") || s.includes("réussi") || s === "payé") return 2
-  if (s.includes("préparation") || s.includes("cours")) return 3
-  if (s.includes("expé") || s.includes("route")) return 4
-  if (s.includes("livré")) return 5
-  if (s.includes("annul")) return 6
-  if (s.includes("rembours")) return 7
-  if (s.includes("erreur") || s.includes("error") || s.includes("échec")) return 8
-  if (s.includes("chèque")) return 1
-  if (s.includes("virement")) return 10
-  if (s.includes("attente")) return 14
+  // 1. Détection du module et du label selon les mots clés
+  if (s.includes("livraison") || s.includes("cod")) {
+    stateId = 13;
+    payment = { module: 'ps_cashondelivery', label: 'Paiement à la livraison' };
+  } else if (s.includes("chèque") || s.includes("cheque") || s.includes("check")) {
+    stateId = 1;
+    payment = { module: 'ps_checkpayment', label: 'Cheque' }; // "Cheque" sans accent pour match module
+  } else if (s.includes("virement")) {
+    stateId = 10;
+    payment = { module: 'ps_wirepayment', label: 'Virement bancaire' };
+  }
 
-  return 2 // default
+  // 2. Ajustement de l'ID d'état selon l'avancement (écrase le défaut si nécessaire)
+  if (s.includes("préparation") || s.includes("cours")) stateId = 3;
+  if (s.includes("expé") || s.includes("route")) stateId = 4;
+  if (s.includes("livré")) stateId = 5;
+  if (s.includes("annul")) stateId = 6;
+  if (s.includes("rembours")) stateId = 7;
+  if (s.includes("erreur") || s.includes("error") || s.includes("échec")) stateId = 8;
+  if (s.includes("attente")) stateId = 14;
+  if (s === "payé" || s.includes("accept")) stateId = 2;
+
+  return { stateId, payment };
 }
 
 /* =====================================================
@@ -448,10 +469,14 @@ async function createOrder(
   secureKey: string,
   items: { productId: number; qty: number; attributeId: number; price: number; name: string; reference: string }[]
 ) {
-  const tp = totalProducts.toFixed(6)
-  const totalPaidReal = (stateId === 2 || stateId === 11) ? tp : "0.000000"
+  // Formatage des montants pour PrestaShop (6 décimales)
+  const tp = totalProducts.toFixed(6);
+  
+  // On considère payé réellement si l'état est "Accepté" (2) ou "Livré" (5) ou "Paiement à distance" (11)
+  const totalPaidReal = (stateId === 2 || stateId === 5 || stateId === 11) ? tp : "0.000000";
 
-  let orderRows = ""
+  // Construction des lignes de produits
+  let orderRows = "";
   for (const item of items) {
     orderRows += `
       <order_row>
@@ -463,7 +488,7 @@ async function createOrder(
         <product_price>${item.price.toFixed(6)}</product_price>
         <unit_price_tax_incl>${item.price.toFixed(6)}</unit_price_tax_incl>
         <unit_price_tax_excl>${item.price.toFixed(6)}</unit_price_tax_excl>
-      </order_row>`
+      </order_row>`;
   }
 
   const xml = `
@@ -486,16 +511,16 @@ async function createOrder(
     <total_paid_tax_excl>${tp}</total_paid_tax_excl>
     <total_products>${tp}</total_products>
     <total_products_wt>${tp}</total_products_wt>
-    <total_shipping>0</total_shipping>
-    <total_shipping_tax_incl>0</total_shipping_tax_incl>
-    <total_shipping_tax_excl>0</total_shipping_tax_excl>
-    <total_discounts>0</total_discounts>
-    <total_discounts_tax_incl>0</total_discounts_tax_incl>
-    <total_discounts_tax_excl>0</total_discounts_tax_excl>
-    <total_wrapping>0</total_wrapping>
-    <total_wrapping_tax_incl>0</total_wrapping_tax_incl>
-    <total_wrapping_tax_excl>0</total_wrapping_tax_excl>
-    <carrier_tax_rate>0</carrier_tax_rate>
+    <total_shipping>0.000000</total_shipping>
+    <total_shipping_tax_incl>0.000000</total_shipping_tax_incl>
+    <total_shipping_tax_excl>0.000000</total_shipping_tax_excl>
+    <total_discounts>0.000000</total_discounts>
+    <total_discounts_tax_incl>0.000000</total_discounts_tax_incl>
+    <total_discounts_tax_excl>0.000000</total_discounts_tax_excl>
+    <total_wrapping>0.000000</total_wrapping>
+    <total_wrapping_tax_incl>0.000000</total_wrapping_tax_incl>
+    <total_wrapping_tax_excl>0.000000</total_wrapping_tax_excl>
+    <carrier_tax_rate>0.000</carrier_tax_rate>
     <conversion_rate>1.000000</conversion_rate>
     <id_shop>1</id_shop>
     <id_shop_group>1</id_shop_group>
@@ -505,10 +530,12 @@ async function createOrder(
       </order_rows>
     </associations>
   </order>
-</prestashop>`
+</prestashop>`;
 
-  const res = await safePost("/orders", xml)
-  return extractId(res)
+  // Envoi de la requête à l'API (utilisation de ton instance axios/prestashop)
+  // safePost doit être ton helper qui gère le ws_key
+  const res = await safePost("/orders", xml);
+  return extractId(res);
 }
 
 async function updateOrderState(orderId: number, stateId: number) {
@@ -537,7 +564,7 @@ async function processRow(row: CsvOrder) {
 
   const hasEtat = etat !== ""
 
-  const stateId = hasEtat ? mapEtatToStateId(etat) : 0
+  const stateId = hasEtat ? mapEtatToOrderData(etat).stateId : 0
   const payment = hasEtat
     ? mapEtatToPayment(etat)
     : { module: "", label: "" }

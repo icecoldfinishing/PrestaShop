@@ -1,17 +1,43 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { runOrderImport } from '../../../services/OrderImport.service'
 
+import { runImport as runProductImport } from '../../../services/ProductImport.service'
+import { runCombinationImport } from '../../../services/CombinationImport.service'
+import { runOrderImport } from '../../../services/OrderImport.service'
 
 /* =========================
    ETATS
 ========================= */
 const loading = ref(false)
 const logs = ref<string[]>([])
+
+const importType = ref<'products' | 'combinations' | 'orders'>('products')
+
 const rawOrders = ref("")
 
 /* =========================
-   CSV COMMANDES
+   PRODUITS
+========================= */
+const products = [
+    { nom: 'Tshirt', reference: 'T_01', prix_ttc: 12.5, taxe: 11.65, prix_achat: 8.5 },
+    { nom: 'Pantalon', reference: 'P_01', prix_ttc: 18.99, taxe: 11.65, prix_achat: 14.33 },
+    { nom: 'Casquette', reference: 'C_03', prix_ttc: 5, taxe: 5.6, prix_achat: 2 },
+    { nom: 'Montre', reference: 'M_02', prix_ttc: 56, taxe: 5.6, prix_achat: 40 }
+]
+
+/* =========================
+   DECLINAISONS
+========================= */
+const combinations = [
+    { reference: 'T_01', specificite: 'taille', karazany: 'ngoza', stock: 13, prix: 12.5 },
+    { reference: 'T_01', specificite: 'taille', karazany: 'kely', stock: 10, prix: 15 },
+    { reference: 'P_01', specificite: 'couleur', karazany: 'mainty', stock: 5, prix: 23.49 },
+    { reference: 'P_01', specificite: 'couleur', karazany: 'fotsy', stock: 3, prix: 18.99 },
+    { reference: 'C_03', specificite: '', karazany: '', stock: 10, prix: null },
+    { reference: 'M_02', specificite: '', karazany: '', stock: 11, prix: null }
+]
+/* =========================
+   COMMANDES
 ========================= */
 const orders = [
     {
@@ -22,6 +48,26 @@ const orders = [
         adresse: 'Andoharanofotsy',
         achat: '[("T_01";3;"ngoza")]',
         etat: 'en attente paiement à la livraison'
+    },
+
+    {
+        date: '16/04/2026',
+        nom: 'Rajao',
+        email: 'rajao1970@yopmail.com',
+        pwd: 'BAC?UoxjQIW;Na8ix',
+        adresse: 'Analakely',
+        achat: '[("T_01";2;"kely"),("C_03";1;"")]',
+        etat: 'paiement accepté'
+    },
+
+    {
+        date: '07/05/2026',
+        nom: 'Rakoto',
+        email: 'rakoto@yopmail.com',
+        pwd: 'XvzsX5O0!GBD0uXQ',
+        adresse: 'Andoharanofotsy',
+        achat: '[("T_01";1;"kely")]',
+        etat: 'erreur de paiement'
     }
 ]
 
@@ -33,26 +79,54 @@ const addLog = (msg: string) => {
 }
 
 /* =========================
-   IMPORT COMMANDES
+   IMPORT GLOBAL
 ========================= */
-async function startOrderImport() {
+async function startGlobalImport() {
 
     loading.value = true
 
     logs.value = [
-        '🚀 Début import commandes...'
+        '🚀 Début importation...'
     ]
 
     try {
 
-        const source = rawOrders.value.trim() ? rawOrders.value : orders
-        const count = Array.isArray(source) ? source.length : 0
+        /* ================= PRODUCTS ================= */
+        if (importType.value === 'products') {
 
-        addLog(`📦 ${count || "?"} commandes détectées`)
+            addLog(`📦 Import Produits (${products.length})`)
 
-        await runOrderImport(source, addLog)
+            await runProductImport(products, addLog)
 
-        addLog('🎉 Import commandes terminé')
+            addLog('🎉 Produits importés')
+
+        }
+
+        /* ================= COMBINATIONS ================= */
+        else if (importType.value === 'combinations') {
+
+            addLog(`🧩 Import Déclinaisons (${combinations.length})`)
+
+            await runCombinationImport(combinations, addLog)
+
+            addLog('🎉 Déclinaisons importées')
+
+        }
+
+        /* ================= ORDERS ================= */
+        else if (importType.value === 'orders') {
+
+            const source = rawOrders.value.trim()
+                ? JSON.parse(rawOrders.value)
+                : orders
+
+            addLog(`🧾 Import Commandes (${source.length})`)
+
+            await runOrderImport(source, addLog)
+
+            addLog('🎉 Commandes importées')
+
+        }
 
     } catch (e: any) {
 
@@ -69,76 +143,143 @@ async function startOrderImport() {
 </script>
 
 <template>
-    <div class="p-6 max-w-4xl mx-auto bg-slate-50 min-h-screen">
+    <div class="p-6 max-w-5xl mx-auto bg-slate-50 min-h-screen">
 
         <div class="bg-white p-8 rounded-2xl shadow-xl border">
 
             <!-- HEADER -->
-            <div class="mb-8 text-center">
+            <div class="text-center mb-8">
 
                 <h1 class="text-3xl font-black text-slate-800 mb-2">
-                    Importation des Commandes
+                    Panel d'Importation
                 </h1>
 
                 <p class="text-slate-500">
-                    Import clients + adresses + paniers + commandes + états
+                    Produits + Déclinaisons + Commandes
                 </p>
 
             </div>
 
-            <!-- STATS -->
-            <div class="grid grid-cols-3 gap-4 mb-8">
+            <!-- CHOIX -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
 
-                <div class="bg-blue-50 border border-blue-200 rounded-xl p-5 text-center">
-                    <div class="text-3xl mb-2">🧾</div>
-                    <div class="text-2xl font-black text-blue-700">
-                        {{ orders.length }}
-                    </div>
-                    <div class="text-sm text-blue-500">
-                        Commandes CSV
-                    </div>
-                </div>
+                <!-- PRODUITS -->
+                <label
+                    :class="[
+                        'flex flex-col items-center p-5 border-2 rounded-2xl cursor-pointer transition-all',
+                        importType === 'products'
+                            ? 'border-blue-500 bg-blue-50 text-blue-700'
+                            : 'border-slate-200 text-slate-400'
+                    ]"
+                >
 
-                <div class="bg-green-50 border border-green-200 rounded-xl p-5 text-center">
-                    <div class="text-3xl mb-2">💳</div>
-                    <div class="text-sm font-bold text-green-700">
-                        Paiement accepté
-                    </div>
-                </div>
+                    <input
+                        type="radio"
+                        value="products"
+                        v-model="importType"
+                        class="hidden"
+                    >
 
-                <div class="bg-orange-50 border border-orange-200 rounded-xl p-5 text-center">
-                    <div class="text-3xl mb-2">🛒</div>
-                    <div class="text-sm font-bold text-orange-700">
-                        Paiement livraison
+                    <div class="text-4xl mb-3">📦</div>
+
+                    <div class="font-black">
+                        PRODUITS
                     </div>
-                </div>
+
+                    <div class="text-xs mt-2">
+                        {{ products.length }} produits
+                    </div>
+
+                </label>
+
+                <!-- DECLINAISONS -->
+                <label
+                    :class="[
+                        'flex flex-col items-center p-5 border-2 rounded-2xl cursor-pointer transition-all',
+                        importType === 'combinations'
+                            ? 'border-purple-500 bg-purple-50 text-purple-700'
+                            : 'border-slate-200 text-slate-400'
+                    ]"
+                >
+
+                    <input
+                        type="radio"
+                        value="combinations"
+                        v-model="importType"
+                        class="hidden"
+                    >
+
+                    <div class="text-4xl mb-3">🧩</div>
+
+                    <div class="font-black">
+                        DECLINAISONS
+                    </div>
+
+                    <div class="text-xs mt-2">
+                        {{ combinations.length }} déclinaisons
+                    </div>
+
+                </label>
+
+                <!-- COMMANDES -->
+                <label
+                    :class="[
+                        'flex flex-col items-center p-5 border-2 rounded-2xl cursor-pointer transition-all',
+                        importType === 'orders'
+                            ? 'border-indigo-500 bg-indigo-50 text-indigo-700'
+                            : 'border-slate-200 text-slate-400'
+                    ]"
+                >
+
+                    <input
+                        type="radio"
+                        value="orders"
+                        v-model="importType"
+                        class="hidden"
+                    >
+
+                    <div class="text-4xl mb-3">🧾</div>
+
+                    <div class="font-black">
+                        COMMANDES
+                    </div>
+
+                    <div class="text-xs mt-2">
+                        {{ orders.length }} commandes
+                    </div>
+
+                </label>
 
             </div>
 
-            <!-- RAW DATA -->
-            <div class="mb-8">
+            <!-- JSON COMMANDES -->
+            <div
+                v-if="importType === 'orders'"
+                class="mb-8"
+            >
+
                 <label class="block text-sm font-bold text-slate-700 mb-2">
-                    Donnees brutes (JSON)
+                    Données commandes (JSON)
                 </label>
 
                 <textarea
                     v-model="rawOrders"
-                    rows="6"
-                    class="w-full rounded-xl border border-slate-200 bg-white p-3 text-xs font-mono text-slate-700 shadow-inner"
-                    placeholder='[{"date":"09/05/2026","nom":"Rakoto","email":"rakoto@yopmail.com","pwd":"XvzsX5O0!GBD0uXQ","adresse":"Andoharanofotsy","achat":"[(\"T_01\";3;\"ngoza\")]","etat":"en attente paiement a la livraison"}]'
+                    rows="8"
+                    class="w-full rounded-2xl border border-slate-200 bg-white p-4 text-xs font-mono shadow-inner"
+                    placeholder='[{"date":"09/05/2026","nom":"Rakoto","email":"rakoto@yopmail.com"}]'
                 ></textarea>
 
-                <p class="text-xs text-slate-500 mt-2">
-                    Si rempli, ces donnees remplacent le tableau d'exemple.
-                </p>
             </div>
 
-            <!-- TABLE -->
-            <div class="overflow-auto rounded-xl border mb-8">
+            <!-- TABLE COMMANDES -->
+            <div
+                v-if="importType === 'orders'"
+                class="overflow-auto rounded-2xl border mb-8"
+            >
 
                 <table class="table-auto w-full text-sm">
 
-                    <thead class="bg-slate-100 text-slate-700">
+                    <thead class="bg-slate-100">
 
                         <tr>
                             <th class="p-3 text-left">Date</th>
@@ -178,7 +319,7 @@ async function startOrderImport() {
                                 {{ o.adresse }}
                             </td>
 
-                            <td class="p-3 font-mono text-xs">
+                            <td class="p-3 text-xs font-mono">
                                 {{ o.achat }}
                             </td>
 
@@ -209,37 +350,48 @@ async function startOrderImport() {
 
             <!-- BUTTON -->
             <button
-                @click="startOrderImport"
+                @click="startGlobalImport"
                 :disabled="loading"
                 :class="[
-                    'w-full py-5 rounded-xl text-white font-black text-lg shadow-lg transition-all active:scale-95 mb-8',
+                    'w-full py-5 rounded-2xl text-white font-black text-lg shadow-lg transition-all active:scale-95 mb-8',
+
+                    importType === 'products'
+                        ? 'bg-blue-600 hover:bg-blue-700'
+
+                    : importType === 'combinations'
+                        ? 'bg-purple-600 hover:bg-purple-700'
+
+                    : 'bg-indigo-600 hover:bg-indigo-700',
+
                     loading
-                        ? 'bg-slate-400 cursor-not-allowed'
-                        : 'bg-indigo-600 hover:bg-indigo-700'
+                        ? 'opacity-50 cursor-not-allowed'
+                        : ''
                 ]"
             >
 
                 {{
                     loading
-                        ? 'IMPORT EN COURS...'
-                        : 'LANCER IMPORT COMMANDES'
+                        ? 'TRAITEMENT EN COURS...'
+                        : 'LANCER IMPORTATION'
                 }}
 
             </button>
 
             <!-- LOGS -->
-            <div class="bg-slate-900 rounded-xl p-5 h-80 overflow-y-auto font-mono text-[11px] text-emerald-400 shadow-inner border-t-4 border-slate-700">
+            <div class="bg-slate-900 rounded-2xl p-5 h-80 overflow-y-auto font-mono text-[11px] text-emerald-400 shadow-inner border-t-4 border-slate-700">
 
                 <div
                     v-for="(l, i) in logs"
                     :key="i"
                     class="mb-1 border-b border-slate-800 pb-1"
                 >
+
                     <span class="opacity-50">
                         [{{ new Date().toLocaleTimeString() }}]
                     </span>
 
                     {{ l }}
+
                 </div>
 
             </div>

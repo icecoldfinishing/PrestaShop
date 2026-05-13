@@ -380,6 +380,27 @@ export async function psLoginCustomer(email, password) {
   }
 }
 
+export async function psLoginCustomerWithoutPassword(email) {
+  if (!email) {
+    throw new Error('Email requis.');
+  }
+  const data = await psGet('customers', '', {
+    'filter[email]': `[${email}]`,
+    display: 'full',
+  });
+  const customerData = data?.prestashop?.customers?.customer;
+  const customer = Array.isArray(customerData) ? customerData[0] : customerData;
+  if (!customer) {
+    throw new Error('Email non trouvé.');
+  }
+  return {
+    id: customer.id,
+    email: getXmlText(customer.email),
+    firstname: getXmlText(customer.firstname),
+    lastname: getXmlText(customer.lastname),
+  };
+}
+
 export async function psLoginAdmin(email, password) {
   if (!email || !password) {
     throw new Error('Email et mot de passe requis.');
