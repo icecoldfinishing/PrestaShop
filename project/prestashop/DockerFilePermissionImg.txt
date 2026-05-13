@@ -1,5 +1,0 @@
-# 1. Donne la propriété des fichiers à l'utilisateur www-data (celui d'Apache/PHP)
-docker exec -it ps_web chown -R www-data:www-data /var/www/html/img
-
-# 2. Donne les droits de lecture/écriture/exécution au dossier des images
-docker exec -it ps_web chmod -R 775 /var/www/html/img
