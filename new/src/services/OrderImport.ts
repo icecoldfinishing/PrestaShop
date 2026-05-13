@@ -176,6 +176,14 @@ function extractId(res: any): number {
   throw new Error("Cannot extract ID from response")
 }
 
+async function getCartSecureKey(cartId: number): Promise<string> {
+  if (!cartId) return ''
+  const res = await prestashop.get(`/carts/${cartId}`)
+  const xml: string = res.data || ''
+  const match = xml.match(/<secure_key>(?:<!\[CDATA\[)?(.*?)(?:\]\]>)?<\/secure_key>/)
+  return match ? match[1].trim() : ''
+}
+
 function randomString(len = 10): string {
   return Math.random().toString(36).substring(2, 2 + len)
 }
@@ -252,8 +260,29 @@ async function createAddress(customerId: number, name: string, address: string, 
    CART
 ===================================================== */
 
-async function createCart(customerId: number, addressId: number, date: string) {
+async function createCart(
+  customerId: number,
+  addressId: number,
+  date: string,
+  items: { productId: number; qty: number; attributeId: number }[] = []
+) {
   const fullDate = `${date} 10:00:00`;
+  const rows = items.map((item) => `
+    <cart_row>
+      <id_product>${item.productId}</id_product>
+      <id_product_attribute>${item.attributeId}</id_product_attribute>
+      <id_address_delivery>${addressId}</id_address_delivery>
+      <quantity>${item.qty}</quantity>
+    </cart_row>`).join("")
+
+  const associations = rows
+    ? `<associations>
+      <cart_rows>
+        ${rows}
+      </cart_rows>
+    </associations>`
+    : ''
+
   const xml = `
 <prestashop>
   <cart>
@@ -268,6 +297,7 @@ async function createCart(customerId: number, addressId: number, date: string) {
     <mobile_theme>0</mobile_theme>
     <date_add>${fullDate}</date_add>
     <date_upd>${fullDate}</date_upd>
+    ${associations}
   </cart>
 </prestashop>`
 
@@ -639,16 +669,6 @@ async function processRow(row: CsvOrder) {
   const addressId = await createAddress(customerId, name, address, orderDate)
   console.log("📍 Adresse créée avec date:", addressId)
 
-  // ── Panier ──────────────────────────────────────────
-  // On réutilise un panier non payé si disponible
-  let cartId = await findOpenCartId(customerId)
-  if (cartId) {
-    console.log("🛒 Panier existant réutilisé:", cartId)
-  } else {
-    cartId = await createCart(customerId, addressId, orderDate)
-    console.log("🛒 Panier créé avec date:", cartId)
-  }
-
   // ── Produits & Calcul du Total ─────────────────────
   const itemsRaw = parsePurchase(purchase)
   const cartItems: { productId: number; qty: number; attributeId: number; price: number; name: string; reference: string }[] = []
@@ -674,8 +694,32 @@ async function processRow(row: CsvOrder) {
 
   if (!cartItems.length) throw new Error(`Panier vide pour ${email}`)
 
-  // ── Ajout au panier ─────────────────────────────
-  const secureKey = await addToCart(cartId, customerId, addressId, cartItems)
+  // ── Panier ──────────────────────────────────────────
+  // Si pas d'etat: on reutilise un panier ouvert. Si etat: on cree un nouveau panier pour isoler.
+  let cartId: number | null = null
+  let createdNewCart = false
+
+  if (!hasEtat) {
+    cartId = await findOpenCartId(customerId)
+  }
+
+  if (cartId) {
+    console.log("🛒 Panier existant réutilisé:", cartId)
+  } else {
+    cartId = await createCart(customerId, addressId, orderDate, cartItems)
+    createdNewCart = true
+    console.log("🛒 Panier créé avec date:", cartId)
+  }
+
+  // ── Ajout au panier (si panier deja existant) ─────────────────────────────
+  let secureKey = ''
+  if (cartId) {
+    if (createdNewCart) {
+      secureKey = await getCartSecureKey(cartId)
+    } else {
+      secureKey = await addToCart(cartId, customerId, addressId, cartItems)
+    }
+  }
 
   if (!hasEtat) {
     console.log("🛒 Pas d'état => Fin au panier:", cartId)
