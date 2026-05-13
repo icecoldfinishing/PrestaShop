@@ -48,30 +48,45 @@ const getAllOrders = async () => {
 
 /* ===================== LOAD CARTS ===================== */
 const getAllCarts = async () => {
+    // 1. On change le display pour récupérer TOUTES les données (dont les associations)
     const data = await psGet('carts', '', {
-        display: '[id,id_customer,date_add]',
+        display: 'full', // 'full' est nécessaire pour voir les cart_rows
     });
 
     const list = data?.prestashop?.carts?.cart;
     const arr = list ? (Array.isArray(list) ? list : [list]) : [];
 
+    // On récupère les IDs des paniers déjà convertis en commandes pour les filtrer
+    const orderCartIds = orders.value.map(o => String(o.id_cart || o.id));
+
     carts.value = arr
         .filter(c => {
             const id = String(c.id);
-            return !orders.value.some(o => o.id === id);
+            // Filtrer si l'ID du panier est déjà présent dans la liste des commandes
+            return !orderCartIds.includes(id);
         })
         .map(c => {
             const id = String(c.id);
-
             orderStateMap.value[id] = 'cart';
+
+            // 2. Calcul ou récupération du montant
+            // Note: PrestaShop WebService ne donne pas toujours le total TTC direct dans 'carts'.
+            // On essaie de récupérer total_paid s'il existe, sinon on peut sommer les lignes (si besoin)
+            let total = c.total_paid || "0.00";
+
+            // Si vous voulez être sûr d'afficher quelque chose si le prix est à 0 dans l'import
+            // on s'assure que c'est bien formaté
+            const formattedTotal = parseFloat(total).toFixed(2);
 
             return {
                 id,
                 type: 'cart',
                 id_customer: getXmlText(c.id_customer),
-                total_paid: '0.00',
+                total_paid: formattedTotal, // Affichera la valeur réelle
                 current_state: 'cart',
                 date_add: getXmlText(c.date_add),
+                // On peut aussi stocker les produits du panier si besoin pour un aperçu
+                products: c.associations?.cart_rows?.cart_row || []
             };
         });
 };

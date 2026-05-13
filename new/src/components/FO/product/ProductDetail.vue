@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, watch, reactive } from 'vue';
-import { extractText, psGetProductFullDetails, cart } from '../../../utils/prestashop-api';
+import { extractText, psGetProductFullDetails, psGetProductTaxMultiplier, cart } from '../../../utils/prestashop-api';
 
 type ProductDetail = {
     id: number;
@@ -14,7 +14,6 @@ type ProductDetail = {
     variants: Record<string, string[]>;
 };
 
-const TAX_RATE = 0.2;
 const props = defineProps<{ productId: number | null }>();
 // Ajout de l'évenement goToCart pour la redirection/protection
 const emit = defineEmits<{ (e: 'back'): void, (e: 'goToCart'): void }>();
@@ -65,13 +64,14 @@ const loadProduct = async (id: number | null) => {
         const images = p.associations?.images?.image;
         let imageId = Array.isArray(images) ? images[0]?.id : images?.id;
         const priceHT = parseFloat(p.price || '0');
+        const taxMultiplier = await psGetProductTaxMultiplier(p);
 
         product.value = {
             id: Number(p.id),
             name: extractText(p.name),
             reference: p.reference || '',
             priceHT,
-            priceTTC: priceHT * (1 + TAX_RATE),
+            priceTTC: priceHT * taxMultiplier,
             description: extractText(p.description) || 'Aucune description',
             imageUrl: getImageUrl(Number(p.id), imageId),
             features: fullData.features,
@@ -132,9 +132,6 @@ onMounted(() => loadProduct(props.productId ?? null));
 
                 <!-- BOUTONS D'ACTION -->
                 <div class="actions">
-                    <div class="price">
-                        {{ TAX_RATE }} % 
-                    </div>
                     <div class="qty">
                         <label>Quantite</label>
                         <input v-model.number="quantity" type="number" min="1" />
