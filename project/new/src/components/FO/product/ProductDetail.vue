@@ -132,6 +132,9 @@ onMounted(() => loadProduct(props.productId ?? null));
 
                 <!-- BOUTONS D'ACTION -->
                 <div class="actions">
+                    <div class="price">
+                        {{ TAX_RATE }} % 
+                    </div>
                     <div class="qty">
                         <label>Quantite</label>
                         <input v-model.number="quantity" type="number" min="1" />

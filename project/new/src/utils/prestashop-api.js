@@ -498,6 +498,70 @@ export async function psGetCartSecureKey(cartId) {
   return getXmlText(data?.prestashop?.cart?.secure_key) || '';
 }
 
+/**
+ * Retourne un panier client non commandé (id_cart sans commande associée).
+ * Prend le plus récent si plusieurs paniers existent.
+ */
+export async function psFindOpenCartId(customerId) {
+  if (!customerId) return null;
+  const data = await psGet('carts', '', {
+    display: '[id,id_customer,date_add]','filter[id_customer]': `[${customerId}]`,
+  });
+  const raw = data?.prestashop?.carts?.cart;
+  if (!raw) return null;
+  const list = Array.isArray(raw) ? raw : [raw];
+  const sorted = list
+    .map((c) => ({ id: cleanId(c.id || c['@_id']), date: getXmlText(c.date_add) }))
+    .filter((c) => c.id)
+    .sort((a, b) => String(b.id).localeCompare(String(a.id)));
+
+  for (const cart of sorted) {
+    const orders = await psGet('orders', '', {
+      display: '[id]',
+      'filter[id_cart]': `[${cart.id}]`,
+    });
+    const orderRaw = orders?.prestashop?.orders?.order;
+    const hasOrder = Array.isArray(orderRaw) ? orderRaw.length > 0 : !!orderRaw;
+    if (!hasOrder) return cart.id;
+  }
+  return null;
+}
+
+/** Charge les lignes d'un panier PS et reconstruit le panier local. */
+export async function psLoadCartItems(cartId) {
+  if (!cartId) return [];
+  const data = await psGet('carts', cartId, { display: 'full' });
+  const cartData = data?.prestashop?.cart;
+  const rawRows = [].concat(cartData?.associations?.cart_rows?.cart_row || []).filter(Boolean);
+  if (!rawRows.length) return [];
+
+  const productIds = rawRows.map((row) => cleanId(row.id_product)).filter(Boolean);
+  const products = await Promise.all(
+    productIds.map((pid) => psGet('products', pid, { display: '[id,price,name,reference]' }))
+  );
+
+  return rawRows.map((row, idx) => {
+    const pid = cleanId(row.id_product);
+    const attr = cleanId(row.id_product_attribute) || '0';
+    const qty = Math.max(1, parseInt(getXmlText(row.quantity), 10) || 1);
+    const p = products[idx]?.prestashop?.product;
+    const priceHt = Number.parseFloat(getXmlText(p?.price) || '0') || 0;
+    const name = extractText(p?.name) || 'Produit';
+    const reference = getXmlText(p?.reference) || '';
+    const cartIdKey = `${pid}-${attr}`;
+
+    return {
+      cartId: cartIdKey,
+      id: pid,
+      id_attribute: attr,
+      name,
+      reference,
+      price: priceHt,
+      quantity: qty,
+    };
+  });
+}
+
 export async function psEnsureCustomerAddress(customer, defaults = {}) {
   const customerId = customer?.id;
   if (!customerId) return null;
@@ -641,24 +705,27 @@ const buildCartKey = (ownerId) => {
 const loadCartState = (ownerId) => {
   try {
     const raw = localStorage.getItem(buildCartKey(ownerId));
-    if (!raw) return { items: [], total: 0, count: 0 };
+    if (!raw) return { items: [], psCartId: null, total: 0, count: 0 };
+    
     const parsed = JSON.parse(raw);
-    if (!parsed || !Array.isArray(parsed.items)) {
-      return { items: [], total: 0, count: 0 };
-    }
     return {
-      items: parsed.items,
+      items: Array.isArray(parsed.items) ? parsed.items : [],
+      psCartId: parsed.psCartId || null, // Récupération de l'ID spécifique
       total: Number(parsed.total) || 0,
       count: Number(parsed.count) || 0,
     };
   } catch {
-    return { items: [], total: 0, count: 0 };
+    return { items: [], psCartId: null, total: 0, count: 0 };
   }
 };
 
+// Dans prestashop-api.js
 const persistCart = (state) => {
-  localStorage.setItem(buildCartKey(state.ownerId), JSON.stringify({
+  // On utilise l'ownerId actuel pour définir la clé de stockage
+  const key = buildCartKey(state.ownerId);
+  localStorage.setItem(key, JSON.stringify({
     items: state.items,
+    psCartId: state.psCartId, // Crucial : sauvegarder l'ID PrestaShop aussi
     total: Number(state.total) || 0,
     count: Number(state.count) || 0,
   }));
@@ -668,6 +735,8 @@ const initialCart = loadCartState(null);
 
 // Dans prestashop-api.js
 
+let ownerSwitchToken = 0;
+
 export const cart = reactive({
   ownerId: null,
   psCartId: null, // On stocke l'ID PrestaShop ici
@@ -676,22 +745,36 @@ export const cart = reactive({
   count: 0,
 
   // Dans l'objet cart de prestashop-api.js
+  // Dans l'objet cart de prestashop-api.js
   async setOwner(ownerId) {
-    // 1. Réinitialiser l'état local pour sécurité
+    const nextOwner = ownerId ? String(ownerId) : null;
+    if (this.ownerId === nextOwner) return;
+    const token = ++ownerSwitchToken;
+    // 1. Reset total de l'état en mémoire pour éviter les fuites de données
     this.items = [];
     this.psCartId = null;
-    this.ownerId = ownerId || null;
+    this.total = 0;
+    this.count = 0;
+    this.ownerId = nextOwner;
 
-    // 2. Charger depuis le stockage spécifique à cet ID
+    // 2. Charger les données spécifiques à ce nouvel ownerId
     const saved = loadCartState(this.ownerId);
-    this.items = saved.items;
+    this.items = saved.items || [];
+    this.psCartId = saved.psCartId || null; // On récupère l'ID PS propre à cet utilisateur
 
-    // 3. Optionnel : Vérifier si un panier existe déjà côté PrestaShop pour cet user
-    // Cela permet de récupérer le panier même si le localStorage a été vidé
-    if (this.ownerId) {
-      await this.syncWithPrestaShop();
+    // 3. Si aucun panier local, tenter de récupérer un panier PS non commandé
+    if (this.ownerId && !this.psCartId) {
+      this.psCartId = await psFindOpenCartId(this.ownerId);
     }
 
+    // 4. Si panier PS trouvé et pas d'items locaux, hydrater depuis PS
+    if (this.ownerId && this.psCartId && this.items.length === 0) {
+      this.items = await psLoadCartItems(this.psCartId);
+    }
+
+    if (token !== ownerSwitchToken) return;
+
+    // 5. Mise à jour des totaux locaux
     this.updateTotals();
   },
 
@@ -730,10 +813,11 @@ export const cart = reactive({
   },
 
   // La fonction CLÉ : Synchronise l'état local vers la DB PrestaShop
-  async syncWithPrestaShop() {
-    this.updateTotals(); // Met à jour count et total local pour l'UI
 
-    if (!this.ownerId) return; // On ne synchronise en DB que si le client est connecté
+  async syncWithPrestaShop() {
+    this.updateTotals();
+
+    if (!this.ownerId) return;
 
     const itemsForApi = this.items.map(item => ({
       id: item.id,
@@ -742,14 +826,22 @@ export const cart = reactive({
     }));
 
     try {
-      // On s'assure d'avoir une adresse (requis par PrestaShop pour créer un panier valide)
       const addressId = await psEnsureCustomerAddress({ id: this.ownerId });
 
-      // On crée ou on met à jour le panier dans PrestaShop
-      // Note: psCreateCart dans ton fichier fait un POST. 
-      // Pour une vraie synchro, il faudrait un psUpdateCart (PUT) si this.psCartId existe.
-      const newPsId = await psCreateCart(this.ownerId, itemsForApi, addressId);
-      this.psCartId = newPsId;
+      if (!this.psCartId) {
+        this.psCartId = await psFindOpenCartId(this.ownerId);
+      }
+
+      if (this.psCartId) {
+        // SI UN ID EXISTE : MISE À JOUR (PUT)
+        console.log(`Mise à jour du panier PS #${this.psCartId}...`);
+        await psUpdateCart(this.psCartId, this.ownerId, itemsForApi, addressId);
+      } else {
+        // SI PAS D'ID : CRÉATION (POST)
+        console.log("Création d'un nouveau panier PS...");
+        const newPsId = await psCreateCart(this.ownerId, itemsForApi, addressId);
+        this.psCartId = newPsId;
+      }
 
       console.log(`Panier PrestaShop synchronisé : #${this.psCartId}`);
     } catch (err) {
@@ -1021,4 +1113,38 @@ export async function psCreateOrder({
     throw new Error(errBody || 'Réponse POST /orders sans id commande (XML inattendu).');
   }
   return id;
+}
+
+/**
+ * Met à jour un panier existant dans PrestaShop.
+ */
+export async function psUpdateCart(cartId, customerId, items, addressId) {
+  const cartData = {
+    prestashop: {
+      cart: {
+        id: cartId, // Requis pour le PUT
+        id_customer: customerId,
+        id_currency: DEFAULT_CURRENCY_ID,
+        id_lang: DEFAULT_LANG_ID,
+        id_shop: DEFAULT_SHOP_ID,
+        id_shop_group: DEFAULT_SHOP_GROUP_ID,
+        id_address_delivery: addressId,
+        id_address_invoice: addressId,
+        associations: {
+          cart_rows: {
+            cart_row: items.map(item => ({
+              id_product: item.id,
+              id_product_attribute: item.id_attribute || 0,
+              id_address_delivery: addressId,
+              quantity: item.quantity
+            }))
+          }
+        }
+      }
+    }
+  };
+
+  const xml = builder.build(cartData);
+  // On utilise psPut sur la ressource carts/{id}
+  return psPut(`carts/${cartId}`, xml);
 }
