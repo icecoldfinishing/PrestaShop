@@ -51,7 +51,7 @@ const orders = [
         pwd: 'XvzsX5O0!GBD0uXQ',
         adresse: 'Andoharanofotsy',
         achat: '[("T_01";3;"ngoza")]',
-        etat: 'en attente paiement à la livraison'
+        etat: ''
     },
     {
         date: '16/04/2026',
@@ -69,10 +69,9 @@ const orders = [
         pwd: 'XvzsX5O0!GBD0uXQ',
         adresse: 'Andoharanofotsy',
         achat: '[("T_01";1;"kely")]',
-        etat: 'erreur de paiement'
+        etat: 'paiement accepté'
     }
 ]
-
 /* =========================
     LOGS
 ========================= */

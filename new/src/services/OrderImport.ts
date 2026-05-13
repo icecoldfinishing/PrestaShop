@@ -471,7 +471,6 @@ async function forceOrderDate(orderId: number, orderDate: string) {
 /* =====================================================
    ORDER CREATION
 ===================================================== */
-
 async function createOrder(
   cartId: number,
   customerId: number,
@@ -480,11 +479,11 @@ async function createOrder(
   payment: { module: string; label: string },
   totalProducts: number,
   secureKey: string,
-  items: any[],
+  items: { productId: number; qty: number; attributeId: number; price: number; name: string; reference: string }[],
   orderDate: string 
 ) {
   const tp = totalProducts.toFixed(6);
-  const fullDate = `${orderDate} 10:00:00`;
+  const totalPaidReal = (stateId === 2 || stateId === 5 || stateId === 11) ? tp : "0.000000";
 
   let orderRows = "";
   for (const item of items) {
@@ -501,27 +500,28 @@ async function createOrder(
       </order_row>`;
   }
 
+  const fullDate = `${orderDate} 10:00:00`; 
+
   const xml = `
 <prestashop>
   <order>
     <id_address_delivery>${addressId}</id_address_delivery>
     <id_address_invoice>${addressId}</id_address_invoice>
     <id_cart>${cartId}</id_cart>
-    <id_currency>1</id_currency>
-    <id_lang>1</id_lang>
+    <id_currency>1</id_currency> <id_lang>1</id_lang>
     <id_customer>${customerId}</id_customer>
     <id_carrier>1</id_carrier>
-    <current_state>10</current_state>
+    <current_state>${stateId}</current_state>
     <module><![CDATA[${payment.module}]]></module>
     <payment><![CDATA[${payment.label}]]></payment>
     <total_paid>${tp}</total_paid>
-    <total_paid_real>0.000000</total_paid_real>
+    <total_paid_real>${totalPaidReal}</total_paid_real>
     <total_products>${tp}</total_products>
     <total_products_wt>${tp}</total_products_wt>
     <conversion_rate>1.000000</conversion_rate>
     <secure_key><![CDATA[${secureKey}]]></secure_key>
-    <date_add><![CDATA[${fullDate}]]></date_add>
-    <date_upd><![CDATA[${fullDate}]]></date_upd>
+    <date_add>${fullDate}</date_add>
+    <date_upd>${fullDate}</date_upd>
     <associations>
       <order_rows>
         ${orderRows}
@@ -530,7 +530,7 @@ async function createOrder(
   </order>
 </prestashop>`;
 
-  const res = await prestashop.post("/orders", xml);
+  const res = await safePost("/orders", xml);
   return extractId(res);
 }
 
@@ -560,45 +560,59 @@ async function processRow(row: CsvOrder) {
 
   const hasEtat = etat !== ""
 
-  // 1. Préparation des données finales (Vrai état et Vrai paiement)
-  const finalStateId = hasEtat ? mapEtatToOrderData(etat).stateId : 0
-  const finalPayment = hasEtat ? mapEtatToPayment(etat) : { module: "", label: "" }
+  const stateId = hasEtat ? mapEtatToOrderData(etat).stateId : 0
+  const payment = hasEtat
+    ? mapEtatToPayment(etat)
+    : { module: "", label: "" }
+
   const orderDate = parseOrderDate(rawDate)
 
-  console.log(`📦 Processing: ${name} <${email}> | etat="${etat}" → cible=${finalStateId}`)
+  console.log(`📦 Processing: ${name} <${email}> | etat="${etat}" → state=${stateId} | date=${orderDate}`)
 
-  // ── Client ──────────────────────────────────────
+  // ── Customer ──────────────────────────────────────
   let customerId = await findCustomerByEmail(email)
   if (!customerId) {
     customerId = await createCustomer(name, email, password)
-    console.log("👤 Client créé:", customerId)
+    console.log("👤 Customer created:", customerId)
   } else {
-    console.log("👤 Client trouvé:", customerId)
+    console.log("👤 Customer found:", customerId)
   }
 
-  // ── Adresse ───────────────────────────────────────
+  // ── Address ───────────────────────────────────────
   const addressId = await createAddress(customerId, name, address)
-  console.log("📍 Adresse créée:", addressId)
+  console.log("📍 Address created:", addressId)
 
-  // ── Panier ──────────────────────────────────────────
+  // ── Cart ──────────────────────────────────────────
   const cartId = await createCart(customerId, addressId)
-  console.log("🛒 Panier créé:", cartId)
+  console.log("🛒 Cart created:", cartId)
 
-  // ── Produits & Calcul du Total ─────────────────────
+  // ── Products ──────────────────────────────────────
   const itemsRaw = parsePurchase(purchase)
+  console.log(`  📋 Parsed ${itemsRaw.length} item(s) from achat field:`, itemsRaw)
+
   const cartItems: { productId: number; qty: number; attributeId: number; price: number; name: string; reference: string }[] = []
   let totalProducts = 0
 
   for (const item of itemsRaw) {
     const product = await getProductByReference(item.reference)
+
     if (!product) {
-      console.warn(` ⚠️ Produit non trouvé: "${item.reference}"`)
+      console.warn(`  ⚠️ Product not found in PrestaShop: "${item.reference}" — skipping`)
       continue
     }
 
+    // Look up the real combination ID and its price impact
     const { id: attributeId, priceImpact } = await getProductAttributeId(product.id, item.attribute)
+
     const finalUnitPrice = product.price + priceImpact
-    totalProducts += (finalUnitPrice * item.qty)
+    const lineTotal = finalUnitPrice * item.qty
+    totalProducts += lineTotal
+
+    console.log(
+      `  ✅ ${item.reference} (id=${product.id}) × ${item.qty}` +
+      `  attr="${item.attribute}" → combId=${attributeId}` +
+      `  price=${finalUnitPrice.toFixed(2)} → line=${lineTotal.toFixed(2)}`
+    )
 
     cartItems.push({
       productId: product.id,
@@ -610,53 +624,45 @@ async function processRow(row: CsvOrder) {
     })
   }
 
-  if (!cartItems.length) throw new Error(`Panier vide pour ${email}`)
+  if (!cartItems.length) throw new Error(`Cart is empty for ${email} — no products found (references: ${itemsRaw.map(i => i.reference).join(", ")})`)
 
-  // ── Ajout au panier (récupère secure_key) ──────────
+  console.log(`  💰 Total products: ${totalProducts.toFixed(6)}`)
+
+  // ── Add items to cart ─────────────────────────────
   const secureKey = await addToCart(cartId, customerId, addressId, cartItems)
+  console.log("🛒 Items added to cart (secure_key extracted)")
 
-  // ── Gestion de la Commande ────────────────────────
-  if (!hasEtat) {
-    console.log("🛒 Pas d'état => Panier uniquement:", cartId)
-    return 0
-  }
-
-  /**
-   * ÉTAPE 1 : Création de la commande "Technique"
-   * On utilise un état neutre (10 - En attente) et un module valide (ps_checkpayment).
-   * On force total_paid_real à 0 dans createOrder pour bloquer l'auto-paiement.
-   */
-  const orderId = await createOrder(
-    cartId,
-    customerId,
-    addressId,
-    10, // État neutre
-    { module: "ps_checkpayment", label: "Import Initial" }, 
-    totalProducts,
-    secureKey,
-    cartItems,
-    orderDate
-  )
-
-  console.log("✅ COMMANDE CRÉÉE (État technique 10):", orderId)
-
-  /**
-   * ÉTAPE 2 : Forçage de la date
-   */
-  await forceOrderDate(orderId, orderDate)
-  console.log(`⏰ Date forcée au ${orderDate}`)
-
-  /**
-   * ÉTAPE 3 : Validation finale (État final + Vrai paiement)
-   * On appelle updateOrderState avec le vrai module de paiement (ex: ps_wirepayment).
-   * C'est ici que PrestaShop va générer la ligne de paiement correcte.
-   */
-  await updateOrderState(orderId, finalStateId, finalPayment)
-
-  console.log(`✅ IMPORT TERMINÉ : État ${finalStateId} appliqué avec ${finalPayment.module}`)
-
-  return orderId
+  // ── Create order from cart ────────────────────────
+  // If no status -> keep only cart
+if (!hasEtat) {
+  console.log("🛒 No status => cart only:", cartId)
+  return 0
 }
+
+// Create real order
+const orderId = await createOrder(
+  cartId,
+  customerId,
+  addressId,
+  stateId,
+  payment,
+  totalProducts,
+  secureKey,
+  cartItems,
+  orderDate
+)
+
+console.log("✅ ORDER CREATED:", orderId)
+
+await forceOrderDate(orderId, orderDate); 
+console.log(`⏰ Order date forced to ${orderDate}`);
+await updateOrderState(orderId, stateId)
+
+console.log(`✅ ORDER STATUS UPDATED to ${stateId}`)
+
+return orderId
+}
+
 /* =====================================================
    IMPORT LOOP
 ===================================================== */
