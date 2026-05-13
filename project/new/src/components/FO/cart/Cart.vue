@@ -155,12 +155,14 @@ const handleCheckout = async () => {
     }
 };
 
-const removeItem = (cartId: string) => {
-    cart.remove(cartId);
+// Dans Cart.vue <script setup>
+
+const removeItem = async (cartId: string) => {
+    await cart.remove(cartId); // Ajout du await
 };
 
-const updateQuantity = (cartId: string, value: number) => {
-    cart.setQuantity(cartId, value);
+const updateQuantity = async (cartId: string, value: number) => {
+    await cart.setQuantity(cartId, value); // Ajout du await
 };
 
 const clearCart = () => {

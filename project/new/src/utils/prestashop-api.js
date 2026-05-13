@@ -611,9 +611,10 @@ export async function psGetProductFullDetails(productId) {
   }
 }
 
+// Modifier buildCartKey pour qu'elle soit stricte
 const buildCartKey = (ownerId) => {
-  const key = ownerId ? String(ownerId) : 'guest';
-  return `${CART_STORAGE_KEY}_${key}`;
+  if (!ownerId) return `${CART_STORAGE_KEY}_guest`;
+  return `${CART_STORAGE_KEY}_user_${ownerId}`;
 };
 
 const loadCartState = (ownerId) => {
@@ -644,57 +645,95 @@ const persistCart = (state) => {
 
 const initialCart = loadCartState(null);
 
+// Dans prestashop-api.js
+
 export const cart = reactive({
   ownerId: null,
-  items: initialCart.items,
-  total: initialCart.total,
-  count: initialCart.count,
+  psCartId: null, // On stocke l'ID PrestaShop ici
+  items: [],
+  total: 0,
+  count: 0,
 
-  setOwner(ownerId) {
+  // Dans l'objet cart de prestashop-api.js
+  async setOwner(ownerId) {
+    // 1. Réinitialiser l'état local pour sécurité
+    this.items = [];
+    this.psCartId = null;
     this.ownerId = ownerId || null;
-    const next = loadCartState(this.ownerId);
-    this.items = next.items;
-    this.total = next.total;
-    this.count = next.count;
+
+    // 2. Charger depuis le stockage spécifique à cet ID
+    const saved = loadCartState(this.ownerId);
+    this.items = saved.items;
+
+    // 3. Optionnel : Vérifier si un panier existe déjà côté PrestaShop pour cet user
+    // Cela permet de récupérer le panier même si le localStorage a été vidé
+    if (this.ownerId) {
+      await this.syncWithPrestaShop();
+    }
+
+    this.updateTotals();
   },
 
-  add(product, quantity = 1, variants = {}) {
-    // On crée une clé unique pour gérer les mêmes produits avec des variantes différentes
+  async add(product, quantity = 1, variants = {}) {
+    const qty = Number.isFinite(quantity) ? Math.max(1, quantity) : 1;
     const variantKey = Object.values(variants).join('-');
     const cartId = `${product.id}-${variantKey}`;
 
     const existingItem = this.items.find(item => item.cartId === cartId);
-
-    const qty = Number.isFinite(quantity) ? Math.max(1, quantity) : 1;
-
     if (existingItem) {
       existingItem.quantity += qty;
     } else {
       this.items.push({
         cartId,
         id: product.id,
+        id_attribute: product.id_attribute || 0, // Assure-toi d'avoir l'ID de déclinaison
         name: product.name,
-        reference: product.reference,
         price: product.priceTTC,
-        imageUrl: product.imageUrl,
-        variants: variants,
         quantity: qty
       });
     }
-    this.updateTotals();
+
+    await this.syncWithPrestaShop();
   },
 
-  remove(cartId) {
+  async remove(cartId) {
     this.items = this.items.filter(item => item.cartId !== cartId);
-    this.updateTotals();
+    await this.syncWithPrestaShop();
   },
 
-  setQuantity(cartId, quantity) {
-    const qty = Number.isFinite(quantity) ? Math.max(1, quantity) : 1;
+  async setQuantity(cartId, quantity) {
     const item = this.items.find(entry => entry.cartId === cartId);
     if (!item) return;
-    item.quantity = qty;
-    this.updateTotals();
+    item.quantity = Math.max(1, quantity);
+    await this.syncWithPrestaShop();
+  },
+
+  // La fonction CLÉ : Synchronise l'état local vers la DB PrestaShop
+  async syncWithPrestaShop() {
+    this.updateTotals(); // Met à jour count et total local pour l'UI
+
+    if (!this.ownerId) return; // On ne synchronise en DB que si le client est connecté
+
+    const itemsForApi = this.items.map(item => ({
+      id: item.id,
+      quantity: item.quantity,
+      id_attribute: item.id_attribute || 0
+    }));
+
+    try {
+      // On s'assure d'avoir une adresse (requis par PrestaShop pour créer un panier valide)
+      const addressId = await psEnsureCustomerAddress({ id: this.ownerId });
+
+      // On crée ou on met à jour le panier dans PrestaShop
+      // Note: psCreateCart dans ton fichier fait un POST. 
+      // Pour une vraie synchro, il faudrait un psUpdateCart (PUT) si this.psCartId existe.
+      const newPsId = await psCreateCart(this.ownerId, itemsForApi, addressId);
+      this.psCartId = newPsId;
+
+      console.log(`Panier PrestaShop synchronisé : #${this.psCartId}`);
+    } catch (err) {
+      console.error("Erreur synchro panier PrestaShop:", err);
+    }
   },
 
   updateTotals() {
@@ -705,6 +744,7 @@ export const cart = reactive({
 
   clear() {
     this.items = [];
+    this.psCartId = null;
     this.updateTotals();
   }
 });

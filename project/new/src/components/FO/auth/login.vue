@@ -20,7 +20,7 @@ watch(
     (email) => {
         if (email) {
             credentials.value.email = email;
-            credentials.value.password = '';
+            credentials.value.password = credentials.value.password || '';
         }
     },
     { immediate: true }
