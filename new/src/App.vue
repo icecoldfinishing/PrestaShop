@@ -5,7 +5,6 @@ import AdminLogin from "./components/BO/auth/auth.vue";
 import CustomerLogin from "./components/FO/auth/login.vue";
 import FoUserPick from "./components/FO/auth/FoUserPick.vue";
 
-import ApiResponseViewer from "./components/BO/API/ApiResponseViewer.vue";
 import Home from "./components/BO/home/Home.vue";
 import Import from "./components/BO/import/Import.vue";
 import HomeFO from "./components/FO/home/Home.vue";
@@ -32,7 +31,7 @@ import "bootstrap/dist/css/bootstrap.min.css";
 import "bootstrap/dist/js/bootstrap.bundle.min.js";
 
 /* ================= MODE ================= */
-const mode = ref("BO");
+const mode = ref("FO");
 
 /* ================= PAGE STATE ================= */
 const PAGE = {
@@ -60,7 +59,7 @@ const PAGE = {
   BO_RESET: "data-reset",
 };
 
-const currentPage = ref(PAGE.BO_CSV);
+const currentPage = ref(PAGE.FO_USER_PICK);
 const loginPrefillEmail = ref("");
 
 /* ================= DATA ================= */
@@ -376,7 +375,6 @@ const switchMode = (newMode) => {
         <AdminLogin v-if="mode === 'BO' && currentPage === PAGE.BO_AUTH"
               @success="handleAdminLogin" />
 
-        <ApiResponseViewer v-if="mode === 'BO' && currentPage === PAGE.BO_API" />
         <Import v-if="mode === 'BO' && currentPage === PAGE.BO_CSV" />
         <DataResetManager v-if="mode === 'BO' && currentPage === PAGE.BO_RESET" />
 

@@ -163,21 +163,7 @@ onMounted(() => {
             <h4 class="mb-3 fw-bold">Outils rapides</h4>
 
             <div class="row g-3">
-                <div class="col-md-4">
-                    <div
-                        class="card h-100 shadow-sm border-0 cursor-pointer"
-                        @click="emit('navigate', 'api')"
-                    >
-                        <div class="card-body">
-                            <h5 class="fw-bold text-primary">API Viewer</h5>
-                            <p class="text-muted mb-0">
-                                Réponses API PrestaShop
-                            </p>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="col-md-4">
+                <div class="col-md-6">
                     <div
                         class="card h-100 shadow-sm border-0 cursor-pointer"
                         @click="emit('navigate', 'csv-import')"
@@ -191,7 +177,7 @@ onMounted(() => {
                     </div>
                 </div>
 
-                <div class="col-md-4">
+                <div class="col-md-6">
                     <div
                         class="card h-100 shadow-sm border-0 cursor-pointer"
                         @click="emit('navigate', 'data-reset')"
