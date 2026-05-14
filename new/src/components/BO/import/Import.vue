@@ -22,10 +22,42 @@ const zipFile = ref<File | null>(null) // Stockage pour le fichier ZIP sélectio
     PRODUITS
 ========================= */
 const products = [
-    { nom: 'Tshirt', reference: 'T_01', prix_ttc: 12.5, taxe: 11.65, prix_achat: 8.5 },
-    { nom: 'Pantalon', reference: 'P_01', prix_ttc: 18.99, taxe: 11.65, prix_achat: 14.33 },
-    { nom: 'Casquette', reference: 'C_03', prix_ttc: 5, taxe: 5.6, prix_achat: 2 },
-    { nom: 'Montre', reference: 'M_02', prix_ttc: 56, taxe: 5.6, prix_achat: 40 }
+    {
+        date_availability_produit: '01/12/2025',
+        nom: 'Tshirt',
+        reference: 'T_01',
+        prix_ttc: 12.5,
+        taxe: 11.65,
+        categorie: 'Akanjo',
+        prix_achat: 8.5
+    },
+    {
+        date_availability_produit: '02/05/2026',
+        nom: 'Pantalon',
+        reference: 'P_01',
+        prix_ttc: 18.99,
+        taxe: 11.65,
+        categorie: 'Akanjo',
+        prix_achat: 14.33
+    },
+    {
+        date_availability_produit: '08/05/2026',
+        nom: 'Casquette',
+        reference: 'C_03',
+        prix_ttc: 5,
+        taxe: 5.6,
+        categorie: 'Accessoire',
+        prix_achat: 2
+    },
+    {
+        date_availability_produit: '08/05/2026',
+        nom: 'Montre',
+        reference: 'M_02',
+        prix_ttc: 56,
+        taxe: 5.6,
+        categorie: 'Accessoire',
+        prix_achat: 40
+    }
 ]
 
 /* =========================

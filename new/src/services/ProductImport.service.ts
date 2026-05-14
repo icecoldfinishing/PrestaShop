@@ -5,7 +5,9 @@ export type ImportProduct = {
     reference: string;
     prix_ttc: number;
     taxe: number;
-    prix_achat?: number; // Optionnel si non présent
+    categorie: string;
+    prix_achat?: number;
+    date_availability_produit?: string; 
 };
 
 export type ImportLogCallback = (message: string) => void;
@@ -63,6 +65,65 @@ function calculatePrixHt(prixTtc: number, taxe: number): number {
 function normalizeApiCollection<T>(value: T | T[] | undefined | null): T[] {
     if (!value) return [];
     return Array.isArray(value) ? value : [value];
+}
+
+function formatAvailabilityDate(input?: string): string {
+    if (!input) {
+        return new Date().toISOString().slice(0, 19).replace('T', ' ');
+    }
+
+    const parts = input.split('/');
+    if (parts.length === 3) {
+        const [day, month, year] = parts;
+        return `${year}-${month}-${day} 00:00:00`;
+    }
+
+    return `${input} 00:00:00`;
+}
+async function getOrCreateCategoryId(
+    categoryName: string
+): Promise<string> {
+
+    const existing = await psGet('categories', '', {
+        display: 'full',
+        'filter[name]': `[${categoryName}]`,
+    });
+
+    const cats = normalizeApiCollection(
+        (existing as any)?.prestashop?.categories?.category
+    );
+
+    if (cats.length > 0) {
+        const existingId = getTextValue(cats[0]?.id);
+
+        if (existingId) {
+            return existingId;
+        }
+    }
+
+    const slug = buildSlug(categoryName);
+
+    const xml = `
+<prestashop>
+    <category>
+        <id_parent>2</id_parent>
+        <active>1</active>
+
+        <name>
+            <language id="1"><![CDATA[${categoryName}]]></language>
+        </name>
+
+        <link_rewrite>
+            <language id="1"><![CDATA[${slug}]]></language>
+        </link_rewrite>
+    </category>
+</prestashop>
+`;
+
+    return requireXmlId(
+        await psPost('categories', xml),
+        'création catégorie'
+    );
 }
 
 /**
@@ -137,15 +198,17 @@ async function getSafeTaxGroupId(product: ImportProduct): Promise<string> {
 /**
  * Construit le XML du produit
  */
-function buildProductXml(product: ImportProduct, taxGroupId: string): string {
+function buildProductXml(product: ImportProduct, taxGroupId: string, categoryId: string ): string {
     const prixHt = calculatePrixHt(product.prix_ttc, product.taxe);
     const slug = buildSlug(product.nom);
     const wholesale = product.prix_achat ? product.prix_achat.toFixed(6) : "0.000000";
 
+    const availabilityDate = formatAvailabilityDate(product.date_availability_produit);
+
     return `<prestashop>
     <product>
         <id_shop_default>${DEFAULT_SHOP_ID}</id_shop_default>
-        <id_category_default>${DEFAULT_CATEGORY_ID}</id_category_default>
+        <id_category_default>${categoryId}</id_category_default>
         <id_tax_rules_group>${taxGroupId}</id_tax_rules_group>
         <price>${prixHt.toFixed(6)}</price>
         <wholesale_price>${wholesale}</wholesale_price>
@@ -154,9 +217,13 @@ function buildProductXml(product: ImportProduct, taxGroupId: string): string {
         <reference>${product.reference}</reference>
         <name><language id="1"><![CDATA[${product.nom}]]></language></name>
         <link_rewrite><language id="1"><![CDATA[${slug}]]></language></link_rewrite>
+
+        <!-- ✅ AJOUT IMPORTANT -->
+        <available_date>${availabilityDate}</available_date>
+
         <associations>
             <categories>
-                <category><id>${DEFAULT_CATEGORY_ID}</id></category>
+                <category><id>${categoryId}</id></category>
             </categories>
         </associations>
     </product>
@@ -190,12 +257,13 @@ export async function runImport(
             const taxGroupId = await getSafeTaxGroupId(product);
             
             // Préparation du XML
-            const productXml = buildProductXml(product, taxGroupId);
+            const categoryId = await getOrCreateCategoryId(product.categorie);
+            const productXml = buildProductXml(product, taxGroupId, categoryId);
             
             // Envoi à PrestaShop
             await psPost("products", productXml);
 
-            log(`✅ [${product.reference}] Succès (TaxGroup: ${taxGroupId})`);
+            log(`✅ [${product.reference}] Succès (TaxGroup: ${taxGroupId}, Category: ${categoryId})`);
         } catch (error) {
             log(`❌ [${product.reference}] Erreur : ${formatError(error)}`);
         }
