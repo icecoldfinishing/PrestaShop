@@ -33,7 +33,7 @@ const getAllOrders = async () => {
         const id = String(o.id);
         const state = getXmlText(o.current_state);
 
-        orderStateMap.value[id] = state;
+        orderStateMap.value[`order-${id}`] = state;
 
         return {
             id,
@@ -65,7 +65,7 @@ const getAllCarts = async () => {
         .filter(c => !orderCartIds.includes(String(c.id)))
         .map(async (c) => {
             const id = String(c.id);
-            orderStateMap.value[id] = 'cart';
+            orderStateMap.value[`cart-${id}`] = 'cart';
 
             // Calcul du total en utilisant psLoadCartItems pour inclure les taxes et impacts de déclinaisons
             let calculatedTotal = 0;
@@ -122,13 +122,13 @@ const canceledStateId = computed(() =>
 );
 
 /* ===================== UPDATE STATE ===================== */
-const setOrderState = async (id, stateId) => {
+const setOrderState = async (id, type, stateId) => {
     if (!stateId) return;
 
-    updatingId.value = id;
+    updatingId.value = `${type}-${id}`;
 
     try {
-        if (orderStateMap.value[id] === 'cart') {
+        if (type === 'cart') {
             if (stateId !== inCartStateId.value && stateId !== 'cart') {
                 const cartObj = carts.value.find(c => c.id === id);
                 if (cartObj) {
@@ -160,7 +160,7 @@ const setOrderState = async (id, stateId) => {
             }
         } else {
             await psUpdateOrderState(id, stateId);
-            orderStateMap.value[id] = stateId;
+            orderStateMap.value[`order-${id}`] = stateId;
         }
 
         await refresh();
@@ -172,13 +172,13 @@ const setOrderState = async (id, stateId) => {
 };
 
 /* ===================== HELPERS UI ===================== */
-const getActiveStateId = (id) => orderStateMap.value[String(id)] || null;
+const getActiveStateId = (id, type) => orderStateMap.value[`${type}-${id}`] || null;
 
-const isPaid = (id) => getActiveStateId(id) === paidStateId.value;
-const isCanceled = (id) => getActiveStateId(id) === canceledStateId.value;
-const isCart = (id) =>
-    getActiveStateId(id) === 'cart' ||
-    getActiveStateId(id) === inCartStateId.value;
+const isPaid = (id, type) => getActiveStateId(id, type) === paidStateId.value;
+const isCanceled = (id, type) => getActiveStateId(id, type) === canceledStateId.value;
+const isCart = (id, type) =>
+    getActiveStateId(id, type) === 'cart' ||
+    getActiveStateId(id, type) === inCartStateId.value;
 
 /* ===================== LABEL ===================== */
 const getStateLabel = (stateId) => {
@@ -232,7 +232,7 @@ onMounted(async () => {
                     </p>
 
                     <p class="mb-1">
-                        Status: {{ getStateLabel(getActiveStateId(item.id)) }}
+                        Status: {{ getStateLabel(getActiveStateId(item.id, item.type)) }}
                     </p>
 
                     <p class="text-primary fw-bold">
@@ -248,30 +248,30 @@ onMounted(async () => {
 
                         <button
                             class="btn btn-sm"
-                            :class="isCart(item.id)
+                            :class="isCart(item.id, item.type)
                                 ? 'btn-secondary'
                                 : 'btn-outline-secondary'"
-                            @click="setOrderState(item.id, inCartStateId)"
+                            @click="setOrderState(item.id, item.type, inCartStateId)"
                         >
                             Panier
                         </button>
 
                         <button
                             class="btn btn-sm"
-                            :class="isPaid(item.id)
+                            :class="isPaid(item.id, item.type)
                                 ? 'btn-success'
                                 : 'btn-outline-success'"
-                            @click="setOrderState(item.id, paidStateId)"
+                            @click="setOrderState(item.id, item.type, paidStateId)"
                         >
                             Payé
                         </button>
 
                         <button
                             class="btn btn-sm"
-                            :class="isCanceled(item.id)
+                            :class="isCanceled(item.id, item.type)
                                 ? 'btn-danger'
                                 : 'btn-outline-danger'"
-                            @click="setOrderState(item.id, canceledStateId)"
+                            @click="setOrderState(item.id, item.type, canceledStateId)"
                         >
                             Annulé
                         </button>
@@ -283,8 +283,8 @@ onMounted(async () => {
 
                         <select
                             class="form-select form-select-sm"
-                            :value="getActiveStateId(item.id)"
-                            @change="setOrderState(item.id, $event.target.value)"
+                            :value="getActiveStateId(item.id, item.type)"
+                            @change="setOrderState(item.id, item.type, $event.target.value)"
                         >
                             <option value="">Statut</option>
 
