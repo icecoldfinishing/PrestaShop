@@ -187,23 +187,19 @@ const switchMode = (newMode) => {
       <span class="navbar-brand fw-bold">Shop</span>
 
       <div class="d-flex gap-2">
-        <button class="btn btn-outline-light btn-sm"
-                @click="goToHomeFO">
+        <button class="btn btn-outline-light btn-sm" @click="goToHomeFO">
           Accueil
         </button>
 
-        <button class="btn btn-outline-light btn-sm"
-                @click="goToCart">
+        <button class="btn btn-outline-light btn-sm" @click="goToCart">
           Panier
         </button>
 
-        <button class="btn btn-outline-light btn-sm"
-                @click="goToFoOrders">
+        <button class="btn btn-outline-light btn-sm" @click="goToFoOrders">
           Mes commandes
         </button>
 
-        <button class="btn btn-light btn-sm"
-                @click="switchMode('BO')">
+        <button class="btn btn-light btn-sm" @click="switchMode('BO')">
           Admin
         </button>
       </div>
@@ -217,43 +213,32 @@ const switchMode = (newMode) => {
         <div class="p-3 border-bottom border-secondary">
           <h5 class="text-center mb-3">Admin Panel</h5>
 
-          <button class="btn btn-sm btn-outline-light w-100"
-                  @click="switchMode('FO')">
+          <button class="btn btn-sm btn-outline-light w-100" @click="switchMode('FO')">
             Retour boutique
           </button>
         </div>
 
         <div class="p-3 border-bottom border-secondary">
           <div v-if="!isAdmin">
-            <button class="btn btn-primary w-100"
-                    @click="currentPage = PAGE.BO_AUTH">
+            <button class="btn btn-primary w-100" @click="currentPage = PAGE.BO_AUTH">
               Login Admin
             </button>
           </div>
 
           <div v-else class="d-flex justify-content-between">
             <div class="small">{{ loggedAdmin.email }}</div>
-            <button class="btn btn-sm btn-danger"
-                    @click="handleAdminLogout">X</button>
+            <button class="btn btn-sm btn-danger" @click="handleAdminLogout">X</button>
           </div>
         </div>
 
         <div v-if="isAdmin" class="p-2">
-          <a class="nav-link text-white"
-             :class="{ 'bg-primary': currentPage === PAGE.BO_HOME }"
-             @click="currentPage = PAGE.BO_HOME">Home</a>
+          <a class="nav-link text-white" :class="{ 'bg-primary': currentPage === PAGE.BO_HOME }"
+            @click="currentPage = PAGE.BO_HOME">Home</a>
 
-          <a class="nav-link text-white"
-             :class="{ 'bg-primary': currentPage === PAGE.BO_PRODUCTS }"
-             @click="currentPage = PAGE.BO_PRODUCTS">Products</a>
-
-          <a class="nav-link text-white"
-             :class="{ 'bg-primary': currentPage === PAGE.BO_CUSTOMERS }"
-             @click="currentPage = PAGE.BO_CUSTOMERS">Customers</a>
-
-          <a class="nav-link text-white"
-             :class="{ 'bg-primary': currentPage === PAGE.BO_ORDERS }"
-             @click="currentPage = PAGE.BO_ORDERS">Orders</a>
+          <a class="nav-link text-white" :class="{ 'bg-primary': currentPage === PAGE.BO_PRODUCTS }"
+            @click="currentPage = PAGE.BO_PRODUCTS">Products</a>
+          <a class="nav-link text-white" :class="{ 'bg-primary': currentPage === PAGE.BO_ORDERS }"
+            @click="currentPage = PAGE.BO_ORDERS">Orders</a>
         </div>
       </div>
 
@@ -261,26 +246,18 @@ const switchMode = (newMode) => {
       <div class="flex-grow-1 p-4 bg-light">
 
         <!-- ================= FO CHOIX UTILISATEUR ================= -->
-        <FoUserPick
-          v-if="mode === 'FO' && currentPage === PAGE.FO_USER_PICK"
-          @choose-login="onChooseFoLogin"
-          @guest="handleFoGuest"
-        />
+        <FoUserPick v-if="mode === 'FO' && currentPage === PAGE.FO_USER_PICK" @choose-login="onChooseFoLogin"
+          @guest="handleFoGuest" />
 
         <!-- ================= FO LOGIN ================= -->
-        <CustomerLogin
-          v-if="mode === 'FO' && currentPage === PAGE.FO_LOGIN"
-          :prefill-email="loginPrefillEmail"
-          @success="handleFoLogin"
-          @back="backToFoUserPick"
-        />
+        <CustomerLogin v-if="mode === 'FO' && currentPage === PAGE.FO_LOGIN" :prefill-email="loginPrefillEmail"
+          @success="handleFoLogin" @back="backToFoUserPick" />
 
         <!-- ================= FO BARRE SESSION ================= -->
         <div
           v-if="mode === 'FO' && loggedCustomer && currentPage !== PAGE.FO_USER_PICK && currentPage !== PAGE.FO_LOGIN"
           class="alert d-flex justify-content-between"
-          :class="loggedCustomer?.guest ? 'alert-secondary' : 'alert-success'"
-        >
+          :class="loggedCustomer?.guest ? 'alert-secondary' : 'alert-success'">
           <div>
             <template v-if="loggedCustomer?.guest">
               <b>Mode invité</b> — navigation sans compte client
@@ -294,38 +271,23 @@ const switchMode = (newMode) => {
         </div>
 
         <!-- ================= FO ================= -->
-        <HomeFO
-          v-if="mode === 'FO' && currentPage === PAGE.FO_HOME && isCustomer"
-          @view="openFoProduct"
-        />
+        <HomeFO v-if="mode === 'FO' && currentPage === PAGE.FO_HOME && isCustomer" @view="openFoProduct" />
 
-        <ProductDetailFO
-          v-if="mode === 'FO' && currentPage === PAGE.FO_PRODUCT_DETAIL && isCustomer"
-          :product-id="selectedFoProductId"
-          @back="closeFoProduct"
-          @go-to-cart="goToCart"
-        />
+        <ProductDetailFO v-if="mode === 'FO' && currentPage === PAGE.FO_PRODUCT_DETAIL && isCustomer"
+          :product-id="selectedFoProductId" @back="closeFoProduct" @go-to-cart="goToCart" />
 
-        <Cart
-          v-if="mode === 'FO' && currentPage === PAGE.FO_CART && isCustomer"
-          @continueShopping="goToHomeFO"
-        />
+        <Cart v-if="mode === 'FO' && currentPage === PAGE.FO_CART && isCustomer" @continueShopping="goToHomeFO" />
 
-        <FoOrders
-          v-if="mode === 'FO' && currentPage === PAGE.FO_ORDERS && isCustomer && !loggedCustomer?.guest"
-        />
+        <FoOrders v-if="mode === 'FO' && currentPage === PAGE.FO_ORDERS && isCustomer && !loggedCustomer?.guest" />
 
         <!-- ================= BO ================= -->
-        <Home v-if="mode === 'BO' && currentPage === PAGE.BO_HOME"
-              @navigate="handleHomeNavigate" />
+        <Home v-if="mode === 'BO' && currentPage === PAGE.BO_HOME" @navigate="handleHomeNavigate" />
 
-        <ProductList v-if="mode === 'BO' && currentPage === PAGE.BO_PRODUCTS"
-                     @edit="openEditProduct" />
+        <ProductList v-if="mode === 'BO' && currentPage === PAGE.BO_PRODUCTS" @edit="openEditProduct" />
 
         <OrderList v-if="mode === 'BO' && currentPage === PAGE.BO_ORDERS" />
 
-        <AdminLogin v-if="mode === 'BO' && currentPage === PAGE.BO_AUTH"
-              @success="handleAdminLogin" />
+        <AdminLogin v-if="mode === 'BO' && currentPage === PAGE.BO_AUTH" @success="handleAdminLogin" />
 
         <Import v-if="mode === 'BO' && currentPage === PAGE.BO_CSV" />
         <DataResetManager v-if="mode === 'BO' && currentPage === PAGE.BO_RESET" />
@@ -344,6 +306,6 @@ const switchMode = (newMode) => {
 }
 
 .nav-link:hover {
-  background: rgba(255,255,255,0.1);
+  background: rgba(255, 255, 255, 0.1);
 }
 </style>
