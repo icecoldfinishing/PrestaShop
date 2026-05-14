@@ -73,13 +73,13 @@ export function parseOrdersCSV(file: File): Promise<OrderRow[]> {
                     })
 
                     results.push({
-                        date: row['date_commande_client'] || '',
+                        date: row['date'] || '',
                         nom: row['nom'] || '',
-                        email: row['mail_client'] || '',
-                        pwd: row['mot_de_passe'] || '',
-                        adresse: row['lieu_livraison'] || '',
-                        achat: row['produits_commande'] || '',
-                        etat: row['statut_commande'] || ''
+                        email: row['email'] || '',
+                        pwd: row['pwd'] || '',
+                        adresse: row['adresse'] || '',
+                        achat: row['achat'] || '',
+                        etat: row['etat'] || ''
                     })
                 }
 

@@ -70,16 +70,16 @@ export function parseCombinationsCSV(file: File): Promise<CombinationImportRow[]
                         row[header] = values[index] ?? ''
                     })
 
-                    const stockRaw = row['qte stock']
-                    const prixRaw = row['prix final']
+                    const stockRaw = row['stock_initial']
+                    const prixRaw = row['prix_vente_ttc']
 
                     results.push({
-                        reference: row['ref produit'] || '',
+                        reference: row['reference'] || '',
                         specificite:
-                            row['type variation'] ||
-                            row['type variation'] ||
+                            row['specificité'] ||
+                            row['specificité'] ||
                             '',
-                        karazany: row['valeur variation'] || '',
+                        karazany: row['karazany'] || '',
 
                         stock:
                             stockRaw !== ''
