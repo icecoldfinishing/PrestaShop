@@ -1,5 +1,5 @@
 // services/ProductImport.ts
-import { runImport as runProductImportService } from '../../ProductImport.service'
+import { runImport as runProductImportService } from './ProductImport.service'
 
 export type ProductImportRow = {
     date_availability_produit: string

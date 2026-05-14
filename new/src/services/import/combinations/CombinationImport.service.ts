@@ -1,5 +1,5 @@
 // On importe depuis ton fichier existant
-import { psGet, psPost, psPut, getXmlId, getXmlText, sleep } from './prestashopApi.service';
+import { psGet, psPost, psPut, getXmlId, getXmlText, sleep } from '../../prestashopApi.service';
 
 export type CombinationRow = {
     reference: string;

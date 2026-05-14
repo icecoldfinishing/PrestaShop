@@ -1,14 +1,12 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
-import { getXmlText, psGet, psDelete } from '../../../utils/prestashop-api';
+import { getXmlText, psGet } from '../../../utils/prestashop-api';
 import { isLoggedIn } from '../../../utils/auth-state';
 
 const products = ref<any[]>([]);
 const loading = ref(false);
-const deletingId = ref<number | null>(null);
 
 const emit = defineEmits<{
-    (e: 'edit', id: number): void;
     (e: 'require-login'): void;
 }>();
 
@@ -70,27 +68,6 @@ const getAllProducts = async () => {
     }
 };
 
-const editProduct = (id: number) => {
-    emit('edit', id);
-};
-
-const deleteProduct = async (id: number) => {
-    if (!window.confirm('Supprimer ce produit ? Cette action est irréversible.')) {
-        return;
-    }
-
-    deletingId.value = id;
-    try {
-        await psDelete('products', id);
-        await getAllProducts();
-    } catch (error) {
-        console.error('Error deleting product:', error);
-        alert('Erreur lors de la suppression du produit');
-    } finally {
-        deletingId.value = null;
-    }
-};
-
 
 onMounted(() => {
     getAllProducts();
@@ -124,24 +101,6 @@ onMounted(() => {
                         <span class="badge" :class="product.active ? 'bg-success' : 'bg-danger'">
                             {{ product.active ? 'Active' : 'Inactive' }}
                         </span>
-
-                        <div class="d-grid gap-2 mt-3">
-                            <div class="d-flex gap-2">
-                                <button 
-                                    class="btn btn-sm btn-outline-secondary flex-fill"
-                                    @click="editProduct(product.id)"
-                                >
-                                    Edit
-                                </button>
-                                <button 
-                                    class="btn btn-sm btn-outline-danger flex-fill"
-                                    :disabled="deletingId === product.id"
-                                    @click="deleteProduct(product.id)"
-                                >
-                                    {{ deletingId === product.id ? '...' : 'Delete' }}
-                                </button>
-                            </div>
-                        </div>
                     </div>
                 </div>
             </div>

@@ -1,4 +1,4 @@
-import prestashop from "./prestashop"
+import prestashop from "../../prestashop"
 
 export interface CsvOrder {
   [key: string]: any

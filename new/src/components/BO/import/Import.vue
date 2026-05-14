@@ -4,7 +4,7 @@ import { ref } from 'vue'
 import { runProductImport } from '../../../services/import/products/ProductLoadCsv'
 import { runCombinationImport } from '../../../services/import/combinations/CombinationLoadCsv'
 import { runOrderImport } from '../../../services/import/orders/OrderLoadCsv'
-import { ImageImportService } from '../../../services/ImageImport.service'
+import { ImageImportService } from '../../../services/import/images/ImageImport.service'
 
 /* =========================
     UI STATE

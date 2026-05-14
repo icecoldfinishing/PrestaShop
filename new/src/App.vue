@@ -14,12 +14,7 @@ import ProductDetailFO from "./components/FO/product/ProductDetail.vue";
 import Cart from "./components/FO/cart/Cart.vue";
 import FoOrders from "./components/FO/order/OrderList.vue";
 
-import ProductCreate from "./components/BO/product/ProductCreate.vue";
-import ProductEdit from "./components/BO/product/ProductEdit.vue";
 
-import CustomerList from "./components/BO/customer/CustomerList.vue";
-import CustomerCreate from "./components/BO/customer/CustomerCreate.vue";
-import CustomerEdit from "./components/BO/customer/CustomerEdit.vue";
 
 import OrderList from "./components/BO/order/OrderList.vue";
 import DataResetManager from "./components/BO/reset/DataResetManager.vue";
@@ -45,12 +40,7 @@ const PAGE = {
 
   BO_HOME: "home",
   BO_PRODUCTS: "products-list",
-  BO_CREATE: "products-create",
-  BO_EDIT: "products-edit",
 
-  BO_CUSTOMERS: "customers-list",
-  BO_CUSTOMER_CREATE: "customers-create",
-  BO_CUSTOMER_EDIT: "customers-edit",
 
   BO_ORDERS: "orders-list",
   BO_AUTH: "auth",
@@ -80,27 +70,7 @@ watch(
   }
 );
 
-/* ================= PRODUCTS ================= */
-const openEditProduct = (id) => {
-  selectedProductId.value = id;
-  currentPage.value = PAGE.BO_EDIT;
-};
 
-const closeEditProduct = () => {
-  currentPage.value = mode.value === "FO" ? PAGE.FO_PRODUCTS : PAGE.BO_PRODUCTS;
-  selectedProductId.value = null;
-};
-
-/* ================= CUSTOMERS ================= */
-const openEditCustomer = (id) => {
-  selectedCustomerId.value = id;
-  currentPage.value = PAGE.BO_CUSTOMER_EDIT;
-};
-
-const closeEditCustomer = () => {
-  currentPage.value = PAGE.BO_CUSTOMERS;
-  selectedCustomerId.value = null;
-};
 
 /* ================= FO ================= */
 const openFoLogin = () => {
@@ -351,24 +321,6 @@ const switchMode = (newMode) => {
 
         <ProductList v-if="mode === 'BO' && currentPage === PAGE.BO_PRODUCTS"
                      @edit="openEditProduct" />
-
-        <ProductCreate v-if="mode === 'BO' && currentPage === PAGE.BO_CREATE"
-                       @done="currentPage = PAGE.BO_PRODUCTS" />
-
-        <ProductEdit v-if="mode === 'BO' && currentPage === PAGE.BO_EDIT"
-                     :product-id="selectedProductId"
-                     @done="closeEditProduct"
-                     @cancel="closeEditProduct" />
-
-        <CustomerList v-if="mode === 'BO' && currentPage === PAGE.BO_CUSTOMERS"
-                      @edit="openEditCustomer" />
-
-        <CustomerCreate v-if="mode === 'BO' && currentPage === PAGE.BO_CUSTOMER_CREATE"
-                        @done="currentPage = PAGE.BO_CUSTOMERS" />
-
-        <CustomerEdit v-if="mode === 'BO' && currentPage === PAGE.BO_CUSTOMER_EDIT"
-                      :customer-id="selectedCustomerId"
-                      @done="closeEditCustomer" />
 
         <OrderList v-if="mode === 'BO' && currentPage === PAGE.BO_ORDERS" />
 

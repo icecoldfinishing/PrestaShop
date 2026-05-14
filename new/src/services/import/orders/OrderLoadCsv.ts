@@ -1,4 +1,4 @@
-import { runOrderImport as runOrderImportService } from '../../OrderImport.service'
+import { runOrderImport as runOrderImportService } from './OrderImport.service'
 
 export type OrderRow = {
     date: string

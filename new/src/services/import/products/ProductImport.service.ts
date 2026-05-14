@@ -1,4 +1,4 @@
-import { psGet, psPost } from "./prestashopApi.service";
+import { psGet, psPost } from "../../prestashopApi.service";
 
 export type ImportProduct = {
     nom: string;

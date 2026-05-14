@@ -1,4 +1,4 @@
-import { runCombinationImport as runCombinationImportService } from '../../CombinationImport.service'
+import { runCombinationImport as runCombinationImportService } from './CombinationImport.service'
 
 export type CombinationImportRow = {
     reference: string
