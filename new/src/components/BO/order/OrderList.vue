@@ -1,6 +1,6 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue';
-import { getXmlText, psGet, psUpdateOrderState } from '../../../utils/prestashop-api';
+import { getXmlText, psGet, psUpdateOrderState, cleanId, psEnsureCustomerAddress, psGetCartSecureKey, psCreateOrder, psLoadCartItems } from '../../../utils/prestashop-api';
 
 const orders = ref([]);
 const carts = ref([]);
@@ -23,7 +23,7 @@ const getStateName = (state) => {
 /* ===================== LOAD ORDERS ===================== */
 const getAllOrders = async () => {
     const data = await psGet('orders', '', {
-        display: '[id,id_customer,total_paid,current_state,date_add]',
+        display: '[id,id_customer,total_paid,current_state,date_add,id_cart]',
     });
 
     const list = data?.prestashop?.orders?.order;
@@ -38,6 +38,7 @@ const getAllOrders = async () => {
         return {
             id,
             type: 'order',
+            id_cart: getXmlText(o.id_cart),
             id_customer: getXmlText(o.id_customer),
             total_paid: parseFloat(o.total_paid || 0).toFixed(2),
             current_state: state,
@@ -47,48 +48,45 @@ const getAllOrders = async () => {
 };
 
 /* ===================== LOAD CARTS ===================== */
+/* ===================== LOAD CARTS ===================== */
 const getAllCarts = async () => {
-    // 1. On change le display pour récupérer TOUTES les données (dont les associations)
+    // On récupère 'full' pour avoir les détails des lignes (associations)
     const data = await psGet('carts', '', {
-        display: 'full', // 'full' est nécessaire pour voir les cart_rows
+        display: 'full',
     });
 
     const list = data?.prestashop?.carts?.cart;
     const arr = list ? (Array.isArray(list) ? list : [list]) : [];
 
-    // On récupère les IDs des paniers déjà convertis en commandes pour les filtrer
-    const orderCartIds = orders.value.map(o => String(o.id_cart || o.id));
+    const orderCartIds = orders.value.map(o => String(o.id_cart)).filter(id => id);
 
-    carts.value = arr
-        .filter(c => {
-            const id = String(c.id);
-            // Filtrer si l'ID du panier est déjà présent dans la liste des commandes
-            return !orderCartIds.includes(id);
-        })
-        .map(c => {
+    // Utilisation d'une fonction asynchrone pour traiter chaque panier
+    const processedCarts = await Promise.all(arr
+        .filter(c => !orderCartIds.includes(String(c.id)))
+        .map(async (c) => {
             const id = String(c.id);
             orderStateMap.value[id] = 'cart';
 
-            // 2. Calcul ou récupération du montant
-            // Note: PrestaShop WebService ne donne pas toujours le total TTC direct dans 'carts'.
-            // On essaie de récupérer total_paid s'il existe, sinon on peut sommer les lignes (si besoin)
-            let total = c.total_paid || "0.00";
-
-            // Si vous voulez être sûr d'afficher quelque chose si le prix est à 0 dans l'import
-            // on s'assure que c'est bien formaté
-            const formattedTotal = parseFloat(total).toFixed(2);
+            // Calcul du total en utilisant psLoadCartItems pour inclure les taxes et impacts de déclinaisons
+            let calculatedTotal = 0;
+            try {
+                const items = await psLoadCartItems(id);
+                calculatedTotal = items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+            } catch (err) {
+                console.error(`Erreur chargement des lignes du panier ${id}:`, err);
+            }
 
             return {
                 id,
                 type: 'cart',
                 id_customer: getXmlText(c.id_customer),
-                total_paid: formattedTotal, // Affichera la valeur réelle
+                total_paid: calculatedTotal.toFixed(2),
                 current_state: 'cart',
                 date_add: getXmlText(c.date_add),
-                // On peut aussi stocker les produits du panier si besoin pour un aperçu
-                products: c.associations?.cart_rows?.cart_row || []
             };
-        });
+        }));
+
+    carts.value = processedCarts;
 };
 
 /* ===================== ORDER STATES ===================== */
@@ -130,10 +128,44 @@ const setOrderState = async (id, stateId) => {
     updatingId.value = id;
 
     try {
-        await psUpdateOrderState(id, stateId);
-        orderStateMap.value[id] = stateId;
+        if (orderStateMap.value[id] === 'cart') {
+            if (stateId !== inCartStateId.value && stateId !== 'cart') {
+                const cartObj = carts.value.find(c => c.id === id);
+                if (cartObj) {
+                    const addressId = await psEnsureCustomerAddress({ id: cartObj.id_customer });
+                    const cartSecureKey = await psGetCartSecureKey(id);
+                    
+                    const items = await psLoadCartItems(id);
+                    const lineItems = items.map(item => ({
+                        productId: item.id,
+                        productAttributeId: item.id_attribute ?? 0,
+                        quantity: item.quantity,
+                        name: item.name,
+                        reference: item.reference || '',
+                        unitPriceTaxIncl: Number(item.price) || 0,
+                        unitPriceTaxExcl: Number(item.price) || 0,
+                    }));
+
+                    const newOrderId = await psCreateOrder({
+                        cartId: id,
+                        customerId: cartObj.id_customer,
+                        addressId: addressId || 1,
+                        secureKey: cartSecureKey,
+                        lineItems: lineItems
+                    });
+
+                    // Une fois la commande créée avec le statut par défaut, on met à jour vers le statut désiré
+                    await psUpdateOrderState(newOrderId, stateId);
+                }
+            }
+        } else {
+            await psUpdateOrderState(id, stateId);
+            orderStateMap.value[id] = stateId;
+        }
 
         await refresh();
+    } catch(err) {
+        console.error("Erreur setOrderState:", err);
     } finally {
         updatingId.value = null;
     }

@@ -32,7 +32,7 @@ import "bootstrap/dist/css/bootstrap.min.css";
 import "bootstrap/dist/js/bootstrap.bundle.min.js";
 
 /* ================= MODE ================= */
-const mode = ref("FO");
+const mode = ref("BO");
 
 /* ================= PAGE STATE ================= */
 const PAGE = {
@@ -60,7 +60,7 @@ const PAGE = {
   BO_RESET: "data-reset",
 };
 
-const currentPage = ref(PAGE.FO_USER_PICK);
+const currentPage = ref(PAGE.BO_ORDERS);
 const loginPrefillEmail = ref("");
 
 /* ================= DATA ================= */
