@@ -183,20 +183,31 @@ const loadProducts = async () => {
 };
 
 const filteredProducts = computed(() => {
-    const nameQ = filterName.value.trim().toLowerCase();
-    const catId = filterCategoryId.value;
-    const minP = filterPriceMin.value.trim() === '' ? null : Number.parseFloat(filterPriceMin.value);
-    const maxP = filterPriceMax.value.trim() === '' ? null : Number.parseFloat(filterPriceMax.value);
-
     return products.value.filter((p) => {
-        if (nameQ && !p.name.toLowerCase().includes(nameQ)) return false;
-        if (catId && p.idCategoryDefault !== catId) return false;
-        if (minP !== null && Number.isFinite(minP) && p.price < minP) return false;
-        if (maxP !== null && Number.isFinite(maxP) && p.price > maxP) return false;
-        return true;
+        const matchesName = p.name
+            .toLowerCase()
+            .includes(filterName.value.toLowerCase());
+
+        const matchesCategory =
+            !filterCategoryId.value ||
+            p.idCategoryDefault === filterCategoryId.value;
+
+        const priceMin = parseFloat(filterPriceMin.value);
+        const priceMax = parseFloat(filterPriceMax.value);
+
+        const matchesPriceMin =
+            isNaN(priceMin) || p.price >= priceMin;
+        const matchesPriceMax =
+            isNaN(priceMax) || p.price <= priceMax;
+
+        return (
+            matchesName &&
+            matchesCategory &&
+            matchesPriceMin &&
+            matchesPriceMax
+        );
     });
 });
-
 const openProduct = (id: number) => emit('view', id);
 
 const resetFilters = () => {
