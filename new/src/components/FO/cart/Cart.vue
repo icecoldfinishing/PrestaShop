@@ -14,7 +14,6 @@ import { loggedCustomer } from '../../../utils/auth-state';
 
 const emit = defineEmits(['continueShopping', 'orderSuccess']);
 
-const isTesting = ref(false);
 const debugLog = ref<string[]>([]);
 
 const totalItems = computed(() => cart.count);
@@ -35,61 +34,6 @@ function formatApiError(err: unknown): string {
     return String(err);
 }
 
-/** IDs de test — à aligner avec ta base PrestaShop locale si besoin */
-const TEST_CUSTOMER_ID = '4';
-const TEST_ADDRESS_ID = '8';
-const TEST_CART_ID = '11';
-const TEST_CARRIER_ID = 2;
-
-const testOrderHardcoded = async () => {
-    isTesting.value = true;
-    addLog('🔍 Test insertion commande (API projet + XML complet)...');
-
-    try {
-        addLog(`Vérification client #${TEST_CUSTOMER_ID}...`);
-        const custRes = await psGet('customers', TEST_CUSTOMER_ID, { display: '[id,firstname,lastname]' });
-        const customer = custRes?.prestashop?.customer;
-        if (!customer) throw new Error(`Client #${TEST_CUSTOMER_ID} introuvable.`);
-        addLog(`✅ Client : ${getXmlText(customer.firstname)} ${getXmlText(customer.lastname)}`);
-
-        addLog(`Vérification adresse #${TEST_ADDRESS_ID}...`);
-        const addrRes = await psGet('addresses', TEST_ADDRESS_ID, { display: '[id,id_customer]' });
-        const address = addrRes?.prestashop?.address;
-        if (!address) throw new Error(`Adresse #${TEST_ADDRESS_ID} introuvable.`);
-        if (cleanId(address.id_customer) !== TEST_CUSTOMER_ID) {
-            throw new Error(
-                `Adresse #${TEST_ADDRESS_ID} liée au client ${cleanId(address.id_customer)}, pas #${TEST_CUSTOMER_ID}.`
-            );
-        }
-        addLog('✅ Cohérence adresse / client OK.');
-
-        addLog(`Lecture panier #${TEST_CART_ID} (secure_key)...`);
-        const cartSecureKey = await psGetCartSecureKey(TEST_CART_ID);
-        if (!cartSecureKey) throw new Error('secure_key du panier introuvable (panier inexistant ?).');
-        addLog(`Clé panier : ${cartSecureKey.substring(0, 8)}…`);
-
-        addLog('POST /orders (psCreateOrder)...');
-        const orderId = await psCreateOrder({
-            cartId: TEST_CART_ID,
-            customerId: TEST_CUSTOMER_ID,
-            addressId: TEST_ADDRESS_ID,
-            secureKey: cartSecureKey,
-            carrierId: TEST_CARRIER_ID,
-            paymentModule: 'ps_checkpayment',
-            paymentName: 'Payment by check',
-            stateId: 2,
-        });
-
-        if (!orderId) throw new Error('Réponse sans id de commande (voir console / réponse XML).');
-        addLog(`🚀 Commande créée #${orderId}`);
-    } catch (err: unknown) {
-        addLog(`STOP : ${formatApiError(err)}`, true);
-        console.error('testOrderHardcoded:', err);
-    } finally {
-        isTesting.value = false;
-    }
-};
-
 const handleCheckout = async () => {
     if (!loggedCustomer.value) {
         addLog('Erreur : client non connecté', true);
@@ -104,7 +48,6 @@ const handleCheckout = async () => {
         return;
     }
 
-    isTesting.value = true;
     addLog('Début validation commande...');
 
     try {
@@ -145,9 +88,7 @@ const handleCheckout = async () => {
     } catch (err: unknown) {
         addLog(`Checkout : ${formatApiError(err)}`, true);
         console.error('handleCheckout:', err);
-    } finally {
-        isTesting.value = false;
-    }
+    } 
 };
 
 // Dans Cart.vue <script setup>
@@ -172,14 +113,6 @@ const clearCart = () => {
             <div>
                 <button type="button" class="btn btn-outline-info btn-sm me-2" @click="debugLog = []">
                     Vider logs
-                </button>
-                <button
-                    type="button"
-                    class="btn btn-outline-danger btn-sm"
-                    :disabled="isTesting"
-                    @click="testOrderHardcoded"
-                >
-                    Test commande (IDs fixes)
                 </button>
             </div>
         </div>

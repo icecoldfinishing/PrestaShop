@@ -6,6 +6,7 @@ import {
     PS_PUBLIC_ORIGIN,
     psGetCategoriesBrief,
     foProductBadgeFromAvailability,
+    psGetProductTaxMultiplier,
 } from '../../../utils/prestashop-api';
 
 type ProductBadge = 'HOT' | 'NEW' | null;
@@ -63,58 +64,117 @@ const loadCategories = async () => {
 
 const loadProducts = async () => {
     loading.value = true;
+
     try {
         const catList = await psGetCategoriesBrief();
         const catMap = new Map(catList.map((c) => [c.id, c.name]));
 
         const data: unknown = await psGet('products', '', { display: 'full' });
-        const root = data as { prestashop?: { products?: { product?: unknown } } };
+
+        const root = data as {
+            prestashop?: {
+                products?: {
+                    product?: unknown;
+                };
+            };
+        };
+
         const productData = root?.prestashop?.products?.product;
+
         if (!productData) {
             products.value = [];
             return;
         }
 
-        const items = Array.isArray(productData) ? productData : [productData];
-        products.value = items
-            .map((raw) => {
-                const p = raw as Record<string, unknown>;
-                if (!isProductActive(p)) return null;
+        const items = Array.isArray(productData)
+            ? productData
+            : [productData];
 
-                const nameObj = p.name as { language?: unknown } | undefined;
-                const lang = nameObj?.language;
-                const name = Array.isArray(lang) ? getXmlText(lang[0] as never) : getXmlText(lang as never);
+        products.value = (
+            await Promise.all(
+                items.map(async (raw) => {
+                    const p = raw as Record<string, unknown>;
 
-                const id = Number(p.id);
-                const images = (p.associations as { images?: { image?: unknown } } | undefined)?.images?.image;
-                let imageId: string | number | null = null;
-                if (Array.isArray(images)) {
-                    imageId = images.length > 0 ? (images[0] as { id?: unknown }).id as string | number : null;
-                } else if (images && typeof images === 'object' && 'id' in images) {
-                    imageId = (images as { id: string | number }).id;
-                }
+                    if (!isProductActive(p)) return null;
 
-                const priceNum = Number.parseFloat(String(p.price ?? 0)) || 0;
-                const idCat = getXmlText(p.id_category_default as never) || '';
-                const availableDate = getXmlText(p.available_date as never);
-                const dateAdd = getXmlText(p.date_add as never);
-                const badge = foProductBadgeFromAvailability(availableDate, dateAdd) as ProductBadge;
+                    const nameObj = p.name as { language?: unknown } | undefined;
+                    const lang = nameObj?.language;
 
-                return {
-                    id,
-                    name,
-                    price: priceNum,
-                    priceLabel: priceNum.toFixed(2),
-                    reference: String(p.reference ?? ''),
-                    imageUrl: getImageUrl(id, imageId),
-                    idCategoryDefault: idCat,
-                    categoryName: idCat ? catMap.get(idCat) || `Cat. ${idCat}` : '—',
-                    availableDate,
-                    dateAdd,
-                    badge,
-                } as ProductCard;
-            })
-            .filter(Boolean) as ProductCard[];
+                    const name = Array.isArray(lang)
+                        ? getXmlText(lang[0] as never)
+                        : getXmlText(lang as never);
+
+                    const id = Number(p.id);
+
+                    const images = (
+                        p.associations as {
+                            images?: { image?: unknown };
+                        } | undefined
+                    )?.images?.image;
+
+                    let imageId: string | number | null = null;
+
+                    if (Array.isArray(images)) {
+                        imageId =
+                            images.length > 0
+                                ? (images[0] as { id?: unknown }).id as string | number
+                                : null;
+                    } else if (
+                        images &&
+                        typeof images === 'object' &&
+                        'id' in images
+                    ) {
+                        imageId = (images as { id: string | number }).id;
+                    }
+
+                    // =========================
+                    // PRIX TTC
+                    // =========================
+
+                    const priceHT =
+                        Number.parseFloat(String(p.price ?? 0)) || 0;
+
+                    const taxMultiplier =
+                        await psGetProductTaxMultiplier(p);
+
+                    const priceTTC = priceHT * taxMultiplier;
+
+                    // =========================
+
+                    const idCat =
+                        getXmlText(p.id_category_default as never) || '';
+
+                    const availableDate =
+                        getXmlText(p.available_date as never);
+
+                    const dateAdd =
+                        getXmlText(p.date_add as never);
+
+                    const badge =
+                        foProductBadgeFromAvailability(
+                            availableDate,
+                            dateAdd
+                        ) as ProductBadge;
+
+                    return {
+                        id,
+                        name,
+                        price: priceTTC,
+                        priceLabel: priceTTC.toFixed(2),
+                        reference: String(p.reference ?? ''),
+                        imageUrl: getImageUrl(id, imageId),
+                        idCategoryDefault: idCat,
+                        categoryName: idCat
+                            ? catMap.get(idCat) || `Cat. ${idCat}`
+                            : '—',
+                        availableDate,
+                        dateAdd,
+                        badge,
+                    } as ProductCard;
+                })
+            )
+        ).filter(Boolean) as ProductCard[];
+
     } catch (error) {
         console.error('Error fetching products:', error);
     } finally {
@@ -171,13 +231,8 @@ onMounted(async () => {
                 <div class="row g-3 align-items-end">
                     <div class="col-md-4">
                         <label class="form-label small fw-semibold text-muted">Nom</label>
-                        <input
-                            v-model="filterName"
-                            type="search"
-                            class="form-control"
-                            placeholder="Rechercher…"
-                            autocomplete="off"
-                        />
+                        <input v-model="filterName" type="search" class="form-control" placeholder="Rechercher…"
+                            autocomplete="off" />
                     </div>
                     <div class="col-md-3">
                         <label class="form-label small fw-semibold text-muted">Catégorie</label>
@@ -190,25 +245,13 @@ onMounted(async () => {
                     </div>
                     <div class="col-md-2">
                         <label class="form-label small fw-semibold text-muted">Prix min (€)</label>
-                        <input
-                            v-model="filterPriceMin"
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            class="form-control"
-                            placeholder="0"
-                        />
+                        <input v-model="filterPriceMin" type="number" min="0" step="0.01" class="form-control"
+                            placeholder="0" />
                     </div>
                     <div class="col-md-2">
                         <label class="form-label small fw-semibold text-muted">Prix max (€)</label>
-                        <input
-                            v-model="filterPriceMax"
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            class="form-control"
-                            placeholder="∞"
-                        />
+                        <input v-model="filterPriceMax" type="number" min="0" step="0.01" class="form-control"
+                            placeholder="∞" />
                     </div>
                     <div class="col-md-1">
                         <button type="button" class="btn btn-outline-secondary w-100" @click="resetFilters">

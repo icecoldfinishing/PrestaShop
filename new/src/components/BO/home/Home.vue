@@ -114,9 +114,6 @@ onMounted(() => {
         <div class="card shadow-sm border-0 mb-5">
             <div class="card-header bg-white border-bottom py-3">
                 <h4 class="mb-0 fw-bold">Tableau de bord — commandes</h4>
-                <p class="text-muted small mb-0 mt-1">
-                    Par jour : nombre de commandes et montant (<code>total_paid</code>). Total général en bas.
-                </p>
             </div>
             <div class="card-body">
                 <div v-if="dashboardLoading" class="text-center py-4 text-muted">

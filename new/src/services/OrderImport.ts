@@ -226,6 +226,15 @@ async function createCustomer(name: string, email: string, password: string, ord
   return extractId(res)
 }
 
+async function forceCustomerDate(customerId: number, orderDate: string) {
+  const getRes = await prestashop.get(`/customers/${customerId}`);
+  let xml = getRes.data.replace(/ xlink:href="[^"]*"/g, "");
+  const fullDate = `${orderDate} 10:00:00`;
+  xml = xml.replace(/<date_add>.*?<\/date_add>/, `<date_add><![CDATA[${fullDate}]]></date_add>`);
+  xml = xml.replace(/<date_upd>.*?<\/date_upd>/, `<date_upd><![CDATA[${fullDate}]]></date_upd>`);
+  await safePut(`/customers/${customerId}`, xml);
+}
+
 /* =====================================================
    ADDRESS
 ===================================================== */
@@ -254,6 +263,15 @@ async function createAddress(customerId: number, name: string, address: string, 
 
   const res = await safePost("/addresses", xml)
   return extractId(res)
+}
+
+async function forceAddressDate(addressId: number, orderDate: string) {
+  const getRes = await prestashop.get(`/addresses/${addressId}`);
+  let xml = getRes.data.replace(/ xlink:href="[^"]*"/g, "");
+  const fullDate = `${orderDate} 10:00:00`;
+  xml = xml.replace(/<date_add>.*?<\/date_add>/, `<date_add><![CDATA[${fullDate}]]></date_add>`);
+  xml = xml.replace(/<date_upd>.*?<\/date_upd>/, `<date_upd><![CDATA[${fullDate}]]></date_upd>`);
+  await safePut(`/addresses/${addressId}`, xml);
 }
 
 /* =====================================================
@@ -303,6 +321,15 @@ async function createCart(
 
   const res = await safePost("/carts", xml)
   return extractId(res)
+}
+
+async function forceCartDate(cartId: number, orderDate: string) {
+  const getRes = await prestashop.get(`/carts/${cartId}`);
+  let xml = getRes.data.replace(/ xlink:href="[^"]*"/g, "");
+  const fullDate = `${orderDate} 10:00:00`;
+  xml = xml.replace(/<date_add>.*?<\/date_add>/, `<date_add><![CDATA[${fullDate}]]></date_add>`);
+  xml = xml.replace(/<date_upd>.*?<\/date_upd>/, `<date_upd><![CDATA[${fullDate}]]></date_upd>`);
+  await safePut(`/carts/${cartId}`, xml);
 }
 
 async function findOpenCartId(customerId: number): Promise<number | null> {
@@ -659,6 +686,7 @@ async function processRow(row: CsvOrder) {
   if (!customerId) {
     // AJOUT: On passe orderDate pour le date_add du client
     customerId = await createCustomer(name, email, password, orderDate)
+    await forceCustomerDate(customerId, orderDate)
     console.log("👤 Client créé avec date:", customerId)
   } else {
     console.log("👤 Client trouvé:", customerId)
@@ -667,6 +695,7 @@ async function processRow(row: CsvOrder) {
   // ── Adresse ───────────────────────────────────────
   // AJOUT: On passe orderDate pour le date_add de l'adresse
   const addressId = await createAddress(customerId, name, address, orderDate)
+  await forceAddressDate(addressId, orderDate)
   console.log("📍 Adresse créée avec date:", addressId)
 
   // ── Produits & Calcul du Total ─────────────────────
@@ -707,6 +736,7 @@ async function processRow(row: CsvOrder) {
     console.log("🛒 Panier existant réutilisé:", cartId)
   } else {
     cartId = await createCart(customerId, addressId, orderDate, cartItems)
+    await forceCartDate(cartId, orderDate)
     createdNewCart = true
     console.log("🛒 Panier créé avec date:", cartId)
   }
