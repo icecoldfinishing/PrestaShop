@@ -1,289 +1,239 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 
-import { runOrderImport } from '../../../services/OrderImport.service'
+import { runProductImport } from '../../../services/import/products/ProductLoadCsv'
+import { runCombinationImport } from '../../../services/import/combinations/CombinationLoadCsv'
+import { runOrderImport } from '../../../services/import/orders/OrderLoadCsv'
+import { ImageImportService } from '../../../services/ImageImport.service'
 
 /* =========================
-    TYPES
-========================= */
-type OrderRow = {
-    date: string
-    nom: string
-    email: string
-    pwd: string
-    adresse: string
-    achat: string
-    etat: string
-}
-
-/* =========================
-    ETATS
+    UI STATE
 ========================= */
 const loading = ref(false)
 const logs = ref<string[]>([])
-const csvFile = ref<File | null>(null)
+
+/* =========================
+    SELECTED IMPORTS (ALL TRUE BY DEFAULT)
+========================= */
+const selected = ref({
+    products: true,
+    combinations: true,
+    orders: true,
+    images: true
+})
+
+/* =========================
+    FILES
+========================= */
+const files = ref<{
+    products: File | null
+    combinations: File | null
+    orders: File | null
+    images: File | null
+}>({
+    products: null,
+    combinations: null,
+    orders: null,
+    images: null
+})
 
 /* =========================
     LOGS
 ========================= */
-const addLog = (msg: string) => {
-    logs.value.unshift(msg)
-}
+const addLog = (msg: string) => logs.value.unshift(msg)
 
 /* =========================
-    FILE
+    FILE HANDLER
 ========================= */
-const onFileChange = (e: Event) => {
+const onFileChange = (type: keyof typeof files.value, e: Event) => {
     const target = e.target as HTMLInputElement
+    if (!target.files?.[0]) return
 
-    if (target.files && target.files[0]) {
-        csvFile.value = target.files[0]
-        addLog(`📄 CSV sélectionné : ${target.files[0].name}`)
-    }
+    files.value[type] = target.files[0]
+    addLog(`${type.toUpperCase()} file selected`)
 }
 
 /* =========================
-    PARSE CSV ORDERS
+    ORDER FIXED EXECUTION ORDER
 ========================= */
-function parseCSVOrders(file: File): Promise<any[]> {
+const executionOrder: (keyof typeof selected.value)[] = [
+    'products',
+    'combinations',
+    'orders',
+    'images'
+]
 
-    return new Promise((resolve, reject) => {
+/* =========================
+    IMPORT ENGINE
+========================= */
+async function startImport() {
+    loading.value = true
+    logs.value = ['START IMPORT PROCESS']
 
-        const reader = new FileReader()
+    try {
+        for (const type of executionOrder) {
 
-        reader.onload = (e) => {
+            if (!selected.value[type]) continue
 
-            try {
+            const file = files.value[type]
 
-                const text = String(e.target?.result || '')
-
-                const lines = text
-                    .split(/\r?\n/)
-                    .filter(l => l.trim())
-
-                if (lines.length <= 1) {
-                    resolve([])
-                    return
+            /* ================= PRODUCTS ================= */
+            if (type === 'products') {
+                if (!file) {
+                    addLog('PRODUCTS file missing')
+                    continue
                 }
 
-                const orders: any[] = []
+                addLog('IMPORT PRODUCTS...')
+                await runProductImport(file, addLog)
+                addLog('PRODUCTS DONE')
+            }
 
-                for (let i = 1; i < lines.length; i++) {
-
-                    const line = lines[i]
-
-                    // PARSER CSV ROBUSTE
-                    const values: string[] = []
-
-                    let current = ''
-                    let inQuotes = false
-
-                    for (let j = 0; j < line.length; j++) {
-
-                        const char = line[j]
-                        const next = line[j + 1]
-
-                        // DOUBLE QUOTE CSV ""
-                        if (char === '"' && next === '"') {
-                            current += '"'
-                            j++
-                            continue
-                        }
-
-                        // TOGGLE QUOTES
-                        if (char === '"') {
-                            inQuotes = !inQuotes
-                            continue
-                        }
-
-                        // SEPARATEUR CSV
-                        if (char === ',' && !inQuotes) {
-                            values.push(current.trim())
-                            current = ''
-                            continue
-                        }
-
-                        current += char
-                    }
-
-                    values.push(current.trim())
-
-                    // ETAT VIDE
-                    while (values.length < 7) {
-                        values.push('')
-                    }
-
-                    const [
-                        date,
-                        nom,
-                        email,
-                        pwd,
-                        adresse,
-                        achat,
-                        etat
-                    ] = values
-
-                    console.log('PARSED =>', {
-                        date,
-                        nom,
-                        email,
-                        pwd,
-                        adresse,
-                        achat,
-                        etat
-                    })
-
-                    orders.push({
-                        date: date.trim(),
-                        nom: nom.trim(),
-                        email: email.trim(),
-                        pwd: pwd.trim(),
-                        adresse: adresse.trim(),
-                        achat: achat.trim(),
-                        etat: etat.trim(),
-                    })
+            /* ================= COMBINATIONS ================= */
+            if (type === 'combinations') {
+                if (!file) {
+                    addLog('COMBINATIONS file missing')
+                    continue
                 }
 
-                resolve(orders)
+                addLog('IMPORT COMBINATIONS...')
+                await runCombinationImport(file, addLog)
+                addLog('COMBINATIONS DONE')
+            }
 
-            } catch (err) {
+            /* ================= ORDERS ================= */
+            if (type === 'orders') {
+                if (!file) {
+                    addLog('ORDERS file missing')
+                    continue
+                }
 
-                reject(err)
+                addLog('IMPORT ORDERS...')
+                await runOrderImport(file, addLog)
+                addLog('ORDERS DONE')
+            }
+
+            /* ================= IMAGES ================= */
+            if (type === 'images') {
+                if (!file) {
+                    addLog('IMAGES ZIP missing')
+                    continue
+                }
+
+                addLog('IMPORT IMAGES...')
+                await ImageImportService.processZip(file, addLog)
+                addLog('IMAGES DONE')
             }
         }
 
-        reader.onerror = reject
-
-        reader.readAsText(file)
-    })
-}
-/* =========================
-    IMPORT
-========================= */
-async function startImport() {
-
-    if (!csvFile.value) {
-        addLog('❌ Aucun fichier CSV sélectionné')
-        return
-    }
-
-    loading.value = true
-
-    logs.value = ['🚀 Début importation commandes...']
-
-    try {
-
-        addLog('📄 Analyse du CSV...')
-
-        const parsedOrders = await parseCSVOrders(csvFile.value)
-
-        addLog(`🛒 ${parsedOrders.length} commande(s) détectée(s)`)
-
-        console.log(parsedOrders)
-
-        await runOrderImport(parsedOrders, addLog)
-
-        addLog('🎉 Commandes importées avec succès')
+        addLog('ALL IMPORTS FINISHED')
 
     } catch (e: any) {
-
-        console.error(e)
-
-        addLog(`❌ ERREUR : ${e.message}`)
-
+        addLog(`ERROR: ${e.message}`)
     } finally {
-
         loading.value = false
     }
 }
 </script>
-
 <template>
-    <div class="p-6 max-w-5xl mx-auto bg-slate-50 min-h-screen">
+<div class="container py-4">
 
-        <div class="bg-white p-8 rounded-2xl shadow-xl border">
+    <div class="card shadow-sm">
+        <div class="card-body">
 
-            <div class="text-center mb-8">
-                <h1 class="text-3xl font-black text-slate-800 mb-2">
-                    TEST IMPORT COMMANDES CSV
-                </h1>
+            <h3 class="text-center mb-1">Import System</h3>
+            <p class="text-center text-muted mb-4">
+                Products • Combinations • Orders • Images
+            </p>
 
-                <p class="text-slate-500">
-                    Import commandes PrestaShop depuis CSV
-                </p>
+            <!-- CHECKBOX GRID -->
+            <div class="row g-3 mb-4">
+
+                <div class="col-md-3">
+                    <div class="form-check border rounded p-3">
+                        <input class="form-check-input"
+                            type="checkbox"
+                            v-model="selected.products">
+                        <label class="form-check-label">Products</label>
+                    </div>
+                </div>
+
+                <div class="col-md-3">
+                    <div class="form-check border rounded p-3">
+                        <input class="form-check-input"
+                            type="checkbox"
+                            v-model="selected.combinations">
+                        <label class="form-check-label">Combinations</label>
+                    </div>
+                </div>
+
+                <div class="col-md-3">
+                    <div class="form-check border rounded p-3">
+                        <input class="form-check-input"
+                            type="checkbox"
+                            v-model="selected.orders">
+                        <label class="form-check-label">Orders</label>
+                    </div>
+                </div>
+
+                <div class="col-md-3">
+                    <div class="form-check border rounded p-3">
+                        <input class="form-check-input"
+                            type="checkbox"
+                            v-model="selected.images">
+                        <label class="form-check-label">Images</label>
+                    </div>
+                </div>
+
             </div>
 
-            <!-- CSV -->
-            <div
-                class="mb-8 p-6 border-2 border-dashed border-indigo-200 rounded-2xl bg-indigo-50/30"
-            >
-                <label class="block text-sm font-bold text-indigo-700 mb-3">
-                    Sélectionnez le fichier CSV commandes
-                </label>
+            <!-- FILE INPUTS -->
+            <div class="row g-3 mb-4">
 
-                <input
-                    type="file"
-                    accept=".csv"
-                    @change="onFileChange"
-                    class="block w-full text-sm text-slate-500
-                    file:mr-4
-                    file:py-2
-                    file:px-4
-                    file:rounded-full
-                    file:border-0
-                    file:text-sm
-                    file:font-semibold
-                    file:bg-indigo-50
-                    file:text-indigo-700
-                    hover:file:bg-indigo-100"
-                />
-            </div>
+                <div class="col-md-3">
+                    <input type="file" class="form-control"
+                        @change="onFileChange('products', $event)">
+                </div>
 
-            <!-- FORMAT -->
-            <div class="mb-8 rounded-2xl bg-slate-900 p-5 text-emerald-400 text-xs font-mono overflow-auto">
-<pre>date,nom,email,pwd,adresse,achat,etat
-09/05/2026,Rakoto,rakoto@yopmail.com,XvzsX5O0!GBD0uXQ,Andoharanofotsy,"[(""T_01"";3;""ngoza"")]",
+                <div class="col-md-3">
+                    <input type="file" class="form-control"
+                        @change="onFileChange('combinations', $event)">
+                </div>
 
-16/04/2026,Rajao,rajao1970@yopmail.com,BAC?UoxjQIW;Na8ix,Analakely,"[(""T_01"";2;""kely""),(""C_03"";1;"""")]",paiement accepté
+                <div class="col-md-3">
+                    <input type="file" class="form-control"
+                        @change="onFileChange('orders', $event)">
+                </div>
 
-07/05/2026,Rakoto,rakoto@yopmail.com,XvzsX5O0!GBD0uXQ,Andoharanofotsy,"[(""T_01"";1;""kely"")]",paiement accepté</pre>
+                <div class="col-md-3">
+                    <input type="file" class="form-control"
+                        accept=".zip"
+                        @change="onFileChange('images', $event)">
+                </div>
+
             </div>
 
             <!-- BUTTON -->
-            <button
-                @click="startImport"
-                :disabled="loading || !csvFile"
-                :class="[
-                    'w-full py-5 rounded-2xl text-white font-black text-lg shadow-lg transition-all active:scale-95 mb-8',
-                    loading || !csvFile
-                        ? 'bg-slate-400 cursor-not-allowed'
-                        : 'bg-indigo-600 hover:bg-indigo-700'
-                ]"
-            >
-                {{
-                    loading
-                        ? 'TRAITEMENT EN COURS...'
-                        : 'LANCER IMPORT COMMANDES'
-                }}
+            <button class="btn btn-primary w-100 py-2"
+                :disabled="loading"
+                @click="startImport">
+
+                {{ loading ? 'Importing...' : 'Start Import' }}
+
             </button>
 
             <!-- LOGS -->
-            <div
-                class="bg-slate-900 rounded-2xl p-5 h-96 overflow-y-auto font-mono text-[11px] text-emerald-400 shadow-inner border-t-4 border-slate-700"
-            >
-                <div
-                    v-for="(l, i) in logs"
-                    :key="i"
-                    class="mb-1 border-b border-slate-800 pb-1"
-                >
-                    <span class="opacity-50">
-                        [{{ new Date().toLocaleTimeString() }}]
-                    </span>
+            <div class="mt-4 bg-dark text-light p-3 rounded"
+                style="height: 250px; overflow:auto; font-size:12px">
 
-                    {{ l }}
+                <div v-for="(l, i) in logs" :key="i">
+                    [{{ new Date().toLocaleTimeString() }}] {{ l }}
                 </div>
+
             </div>
 
         </div>
     </div>
+
+</div>
 </template>
