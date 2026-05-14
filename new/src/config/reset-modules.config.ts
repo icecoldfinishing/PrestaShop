@@ -119,17 +119,40 @@ const PRODUCT_MODULE: ResetModuleConfig = {
       table: 'ps_stock_available',
       singularTag: 'stock_available'
     },
-
     {
       apiResource: 'combinations',
       table: 'ps_product_attribute',
       singularTag: 'combination'
     },
-
     {
       apiResource: 'products',
       table: 'ps_product',
       singularTag: 'product'
+    },
+    {
+      apiResource: 'product_option_values',
+      table: 'ps_attribute',
+      singularTag: 'product_option_value'
+    },
+    {
+      apiResource: 'product_options',
+      table: 'ps_attribute_group',
+      singularTag: 'product_option'
+    },
+    {
+      apiResource: 'tax_rules',
+      table: 'ps_tax_rule',
+      singularTag: 'tax_rule'
+    },
+    {
+      apiResource: 'tax_rule_groups',
+      table: 'ps_tax_rules_group',
+      singularTag: 'tax_rule_group'
+    },
+    {
+      apiResource: 'taxes',
+      table: 'ps_tax',
+      singularTag: 'tax'
     },
   ],
 
@@ -138,14 +161,12 @@ const PRODUCT_MODULE: ResetModuleConfig = {
     // -------------------------------------------------------------------
     // PRODUITS
     // -------------------------------------------------------------------
-
     { table: 'ps_product_lang', cascadeParent: 'products' },
     { table: 'ps_product_shop', cascadeParent: 'products' },
 
     // -------------------------------------------------------------------
     // IMAGES
     // -------------------------------------------------------------------
-
     { table: 'ps_image', cascadeParent: 'products' },
     { table: 'ps_image_lang', cascadeParent: 'products' },
     { table: 'ps_image_shop', cascadeParent: 'products' },
@@ -153,63 +174,63 @@ const PRODUCT_MODULE: ResetModuleConfig = {
     // -------------------------------------------------------------------
     // CATÉGORIES
     // -------------------------------------------------------------------
-
     { table: 'ps_category_product', cascadeParent: 'products' },
 
     // -------------------------------------------------------------------
     // FEATURES
     // -------------------------------------------------------------------
-
     { table: 'ps_feature_product', cascadeParent: 'products' },
 
     // -------------------------------------------------------------------
     // TAGS
     // -------------------------------------------------------------------
-
     { table: 'ps_product_tag', cascadeParent: 'products' },
 
     // -------------------------------------------------------------------
     // STOCKS
     // -------------------------------------------------------------------
-
     { table: 'ps_stock_available', cascadeParent: 'products' },
 
     // -------------------------------------------------------------------
     // DECLINAISONS
     // -------------------------------------------------------------------
-
     { table: 'ps_product_attribute_shop', cascadeParent: 'combinations' },
-
     { table: 'ps_product_attribute_combination', cascadeParent: 'combinations' },
-
     { table: 'ps_product_attribute_image', cascadeParent: 'combinations' },
-
     { table: 'ps_product_attribute_shop', cascadeParent: 'combinations' },
 
     // -------------------------------------------------------------------
     // SPECIFIC PRICES
     // -------------------------------------------------------------------
-
     { table: 'ps_specific_price', cascadeParent: 'products' },
 
     // -------------------------------------------------------------------
     // ACCESSOIRES
     // -------------------------------------------------------------------
-
     { table: 'ps_accessory', cascadeParent: 'products' },
 
     // -------------------------------------------------------------------
     // CUSTOMIZATION
     // -------------------------------------------------------------------
-
     { table: 'ps_customization_field', cascadeParent: 'products' },
-
     { table: 'ps_customization_field_lang', cascadeParent: 'products' },
+
+    // -------------------------------------------------------------------
+    // ATTRIBUTS
+    // -------------------------------------------------------------------
+    { table: 'ps_attribute_lang', cascadeParent: 'product_option_values' },
+    { table: 'ps_attribute_shop', cascadeParent: 'product_option_values' },
+    { table: 'ps_attribute_group_lang', cascadeParent: 'product_options' },
+    { table: 'ps_attribute_group_shop', cascadeParent: 'product_options' },
+
+    // -------------------------------------------------------------------
+    // TAXES (LANG)
+    // -------------------------------------------------------------------
+    { table: 'ps_tax_lang', cascadeParent: 'taxes' },
   ],
 
   dependsOn: [],
 };
-
 // ---------------------------------------------------------------------------
 // EXPORTS
 // ---------------------------------------------------------------------------

@@ -59,13 +59,13 @@ export function parseProductsCSV(file: File): Promise<ProductImportRow[]> {
                     })
 
                     result.push({
-                        date_availability_produit: row['date_availability_produit'] || '',
-                        nom: row['nom'] || '',
-                        reference: row['reference'] || '',
+                        date_availability_produit: row['date dispo'] || '',
+                        nom: row['produit_nom'] || '',
+                        reference: row['ref produit'] || '',
                         prix_ttc: toNumber(row['prix_ttc']),
-                        taxe: toNumber(row['taxe']?.replace('%', '')),
-                        categorie: row['categorie'] || '',
-                        prix_achat: toNumber(row['prix_achat'])
+                        taxe: toNumber(row['tva %']),
+                        categorie: row['categorie produit'] || '',
+                        prix_achat: toNumber(row['cout_achat'])
                     })
                 }
 

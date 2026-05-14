@@ -1,0 +1,21 @@
+date dispo,produit_nom,ref produit,prix_TTC,TVA %,categorie produit,cout_achat
+01/12/2025,Tshirt Basic,T_01,"12,5","11,65%",Akanjo,"8,5"
+02/05/2026,Pantalon Slim,P_01,"18,99","11,65%",Akanjo,"14,33"
+08/05/2026,Casquette Sport,C_03,5,"5,60%",Accessoire,2
+08/05/2026,Montre Classique,M_02,56,"5,60%",Accessoire,40
+10/06/2026,Sneakers Run,S_10,"79,90","20%",Chaussure,"55"
+15/06/2026,Pull Hiver,P_22,"34,50","11,65%",Akanjo,"22"
+20/06/2026,Veste Jeans,V_11,"59,99","20%",Akanjo,"41,50"
+25/06/2026,Short Sport,SH_07,"19,90","11,65%",Sport,"12"
+28/06/2026,Chaussettes Pack,CX_05,"6,99","5,60%",Accessoire,"3,20"
+30/06/2026,Sac à Dos,SAC_01,"29,90","11,65%",Accessoire,"18"
+02/07/2026,Lunettes Soleil,L_08,"15,50","5,60%",Accessoire,"9"
+05/07/2026,Ceinture Cuir,CNT_03,"22,00","11,65%",Accessoire,"14"
+08/07/2026,Chaussures Ville,SHV_12,"45,99","20%",Chaussure,"30"
+10/07/2026,Tshirt Premium,T_15,"25,00","11,65%",Akanjo,"16"
+12/07/2026,Polo Homme,POL_09,"19,50","11,65%",Akanjo,"13"
+15/07/2026,Robe Été,RB_04,"39,90","20%",Akanjo,"27"
+18/07/2026,Baskets Femme,BF_20,"65,00","20%",Chaussure,"48"
+20/07/2026,Gants Sport,G_06,"9,90","5,60%",Sport,"4,5"
+22/07/2026,Bonnet Hiver,BON_02,"7,50","5,60%",Accessoire,"3,8"
+25/07/2026,Manteau Long,MNT_14,"89,99","20%",Akanjo,"65"
