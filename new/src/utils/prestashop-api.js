@@ -265,21 +265,29 @@ export function foProductBadgeFromAvailability(availableDate, dateAdd) {
   const parseDay = (s) => {
     const t = String(s || '').trim().slice(0, 10);
     if (!t || t.startsWith('0000')) return null;
-    const d = new Date(`${t}T12:00:00`);
-    return Number.isNaN(d.getTime()) ? null : d;
+
+    const [y, m, d] = t.split('-');
+    if (!y || !m || !d) return null;
+
+    // Force une date "pure" à minuit UTC-like local safe
+    return new Date(Number(y), Number(m) - 1, Number(d));
   };
+
   const ref = parseDay(availableDate) || parseDay(dateAdd);
   if (!ref) return null;
-  const end = new Date();
-  end.setHours(23, 59, 59, 999);
-  const ms = end.getTime() - ref.getTime();
+
+  const today = new Date();
+  const now = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+
+  const ms = now.getTime() - ref.getTime();
   if (ms < 0) return null;
+
   const days = ms / 86400000;
+
   if (days <= 1) return 'HOT';
   if (days <= 7) return 'NEW';
   return null;
 }
-
 
 /**
  * Retrieve all IDs for a given API resource.
