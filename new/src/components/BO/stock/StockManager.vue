@@ -20,6 +20,9 @@ const evolutionLoading = ref(false);
 const selectedProductForEvolution = ref(null);
 const stockMovements = ref([]);
 
+// Cache pour garder l'évolution fixe par produit (mock)
+const mockMovementsCache = {};
+
 const loadData = async () => {
     loading.value = true;
     try {
@@ -80,6 +83,23 @@ const updateQuantity = async (stockId, currentQty, amount) => {
         if (stockEntry) {
             stockEntry.quantity = newQty;
         }
+
+        // Add to cache to reflect in evolution immediately if cache exists
+        const productId = products.value.find(p => p.stockId === stockId)?.id;
+        if (productId) {
+            if (!mockMovementsCache[productId]) {
+                generateMockMovements(productId, currentQty); // generate initial if not exists
+            }
+            mockMovementsCache[productId].unshift({
+                id: `manual-${Date.now()}`,
+                change: amount,
+                quantity: newQty,
+                sign: amount > 0 ? 1 : -1,
+                date: new Date().toISOString().replace('T', ' ').slice(0, 19),
+                reason: 'Ajustement manuel'
+            });
+        }
+        
     } catch (err) {
         console.error("Error updating stock:", err);
         alert("Erreur lors de la mise à jour du stock.");
@@ -108,17 +128,22 @@ const viewEvolution = async (product) => {
         } else {
             // Mock data for demonstration if no movements are found
             // PrestaShop advanced stock management is often disabled by default
-            generateMockMovements(product.quantity);
+            generateMockMovements(product.id, product.quantity);
         }
     } catch (err) {
         console.error("Error loading stock movements:", err);
-        generateMockMovements(product.quantity);
+        generateMockMovements(product.id, product.quantity);
     } finally {
         evolutionLoading.value = false;
     }
 };
 
-const generateMockMovements = (currentQty) => {
+const generateMockMovements = (productId, currentQty) => {
+    if (mockMovementsCache[productId]) {
+        stockMovements.value = mockMovementsCache[productId];
+        return;
+    }
+
     const mockMvts = [];
     let rollingQty = currentQty;
     const now = new Date();
@@ -144,6 +169,7 @@ const generateMockMovements = (currentQty) => {
         });
     }
     
+    mockMovementsCache[productId] = mockMvts;
     stockMovements.value = mockMvts;
 };
 
@@ -219,7 +245,7 @@ onMounted(() => {
                                 </td>
                                 <td class="text-end pe-4">
                                     <button class="btn btn-sm btn-info text-white" @click="viewEvolution(product)">
-                                        📈 Évolution
+                                        Évolution
                                     </button>
                                 </td>
                             </tr>
