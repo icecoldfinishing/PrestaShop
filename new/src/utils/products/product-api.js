@@ -34,13 +34,15 @@ const COD_STATE_ID = 10;
  */
 export async function psGetOrdersLight() {
   const data = await psGet('orders', '', {
-    display: '[id,total_paid,date_add,current_state]',
+    display: '[id,total_paid,date_add,current_state,id_customer]',
+    sort: '[id_DESC]'
   });
   const raw = data?.prestashop?.orders?.order;
   if (!raw) return [];
   const list = Array.isArray(raw) ? raw : [raw];
   return list.map((o) => ({
     id: getXmlText(o.id),
+    id_customer: getXmlText(o.id_customer),
     total_paid: parseFloat(getXmlText(o.total_paid) || '0') || 0,
     date_add: getXmlText(o.date_add),
     current_state: getXmlText(o.current_state),
@@ -84,10 +86,14 @@ export function psAggregateOrdersByDay(orders) {
   return { byDay, totals };
 }
 
-/** Données tableau de bord : série par jour + totaux. */
+/** Données tableau de bord : série par jour + totaux + liste brute. */
 export async function psGetOrdersDashboardStats() {
   const orders = await psGetOrdersLight();
-  return psAggregateOrdersByDay(orders);
+  const aggregated = psAggregateOrdersByDay(orders);
+  return {
+    ...aggregated,
+    orders
+  };
 }
 
 
@@ -267,7 +273,7 @@ export async function psLoadCartItems(cartId) {
 
   const productIds = rawRows.map((row) => cleanId(row.id_product)).filter(Boolean);
   const products = await Promise.all(
-    productIds.map((pid) => psGet('products', pid, { display: '[id,price,name,reference,id_tax_rules_group,associations]' }))
+    productIds.map((pid) => psGet('products', pid))
   );
 
   return await Promise.all(rawRows.map(async (row, idx) => {

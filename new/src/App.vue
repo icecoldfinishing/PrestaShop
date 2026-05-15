@@ -50,6 +50,7 @@ const PAGE = {
 
 const currentPage = ref(PAGE.FO_USER_PICK);
 const loginPrefillEmail = ref("");
+const foOrdersCount = ref(0);
 
 /* ================= DATA ================= */
 const selectedProductId = ref(null);
@@ -62,11 +63,34 @@ const isCustomer = computed(() => !!loggedCustomer.value);
 
 cart.setOwner(loggedCustomer.value?.id || null);
 
+import { psGet } from "./utils/prestashop-api";
+
+const fetchFoOrdersCount = async (customerId) => {
+  if (!customerId) {
+    foOrdersCount.value = 0;
+    return;
+  }
+  try {
+    const data = await psGet('orders', '', {
+      'filter[id_customer]': `[${customerId}]`,
+      display: '[id]'
+    });
+    const raw = data?.prestashop?.orders?.order;
+    const list = Array.isArray(raw) ? raw : raw ? [raw] : [];
+    foOrdersCount.value = list.length;
+  } catch (e) {
+    console.error("Error fetching order count", e);
+    foOrdersCount.value = 0;
+  }
+};
+
 watch(
   () => loggedCustomer.value?.id || null,
   async (nextId) => {
     await cart.setOwner(nextId);
-  }
+    await fetchFoOrdersCount(nextId);
+  },
+  { immediate: true }
 );
 
 
@@ -118,6 +142,7 @@ const goToHomeFO = () => {
 const handleCustomerLogout = () => {
   logout();
   cart.setOwner(null);
+  foOrdersCount.value = 0;
   currentPage.value = PAGE.FO_USER_PICK;
 };
 
@@ -125,12 +150,14 @@ const handleCustomerLogout = () => {
 const handleFoLogin = () => {
   loginPrefillEmail.value = "";
   cart.setOwner(loggedCustomer.value?.id || null);
+  fetchFoOrdersCount(loggedCustomer.value?.id);
   currentPage.value = PAGE.FO_HOME;
 };
 
 const handleFoGuest = () => {
   enterFoGuest();
   cart.setOwner(null);
+  foOrdersCount.value = 0;
   loginPrefillEmail.value = "";
   currentPage.value = PAGE.FO_HOME;
 };
@@ -138,6 +165,7 @@ const handleFoGuest = () => {
 const onChooseFoLogin = (email) => {
   loginPrefillEmail.value = email;
   cart.setOwner(loggedCustomer.value?.id || null);
+  fetchFoOrdersCount(loggedCustomer.value?.id);
   currentPage.value = PAGE.FO_HOME;
 };
 
@@ -187,18 +215,28 @@ const switchMode = (newMode) => {
 
       <div class="d-flex gap-2">
         <button class="btn btn-outline-light btn-sm" @click="goToHomeFO">
+          <i class="bi bi-house-door me-1"></i>
           Accueil
         </button>
 
-        <button class="btn btn-outline-light btn-sm" @click="goToCart">
+        <button class="btn btn-outline-light btn-sm position-relative" @click="goToCart">
+          <i class="bi bi-cart3 me-1"></i>
           Panier
+          <span v-if="cart.count > 0" class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger">
+            {{ cart.count }}
+          </span>
         </button>
 
-        <button class="btn btn-outline-light btn-sm" @click="goToFoOrders">
+        <button class="btn btn-outline-light btn-sm position-relative" @click="goToFoOrders">
+          <i class="bi bi-bag-check me-1"></i>
           Mes commandes
+          <span v-if="foOrdersCount > 0" class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-primary">
+            {{ foOrdersCount }}
+          </span>
         </button>
 
         <button class="btn btn-light btn-sm" @click="switchMode('BO')">
+          <i class="bi bi-shield-lock me-1"></i>
           Admin
         </button>
       </div>
@@ -208,8 +246,11 @@ const switchMode = (newMode) => {
 
       <!-- ================= BO SIDEBAR ================= -->
       <div v-if="mode === 'BO'" class="bg-dark text-white d-flex flex-column bo-sidebar">
-        <div class="p-3 border-bottom border-secondary">
-          <h5 class="text-center mb-3">Admin Panel</h5>
+        <div class="p-3 border-bottom border-secondary text-center">
+          <div class="mb-2">
+            <i class="bi bi-speedometer2 display-6"></i>
+          </div>
+          <h5 class="mb-3">Admin Panel</h5>
 
           <button class="btn btn-sm btn-outline-light w-100" @click="switchMode('FO')">
             <i class="bi bi-shop me-1"></i>
@@ -224,8 +265,8 @@ const switchMode = (newMode) => {
             </button>
           </div>
 
-          <div v-else class="d-flex justify-content-between">
-            <div class="small">{{ loggedAdmin.email }}</div><button class="btn btn-sm btn-danger"
+          <div v-else class="d-flex justify-content-between align-items-center">
+            <div class="small text-truncate me-2">{{ loggedAdmin.email }}</div><button class="btn btn-sm btn-danger"
               @click="handleAdminLogout">
               <i class="bi bi-box-arrow-right"></i>
             </button>
@@ -234,14 +275,23 @@ const switchMode = (newMode) => {
 
         <div v-if="isAdmin" class="p-2 overflow-y-auto">
           <a class="nav-link text-white" :class="{ 'bg-primary': currentPage === PAGE.BO_HOME }"
-            @click="currentPage = PAGE.BO_HOME">Home</a>
+            @click="currentPage = PAGE.BO_HOME">
+            Home
+          </a>
 
           <a class="nav-link text-white" :class="{ 'bg-primary': currentPage === PAGE.BO_PRODUCTS }"
-            @click="currentPage = PAGE.BO_PRODUCTS">Products</a>
+            @click="currentPage = PAGE.BO_PRODUCTS">
+            Products
+          </a>
           <a class="nav-link text-white" :class="{ 'bg-primary': currentPage === PAGE.BO_STOCKS }"
-            @click="currentPage = PAGE.BO_STOCKS">Stocks</a>
+            @click="currentPage = PAGE.BO_STOCKS">
+           Stocks
+          </a>
           <a class="nav-link text-white" :class="{ 'bg-primary': currentPage === PAGE.BO_ORDERS }"
-            @click="currentPage = PAGE.BO_ORDERS">Orders</a>
+            @click="currentPage = PAGE.BO_ORDERS">
+            Orders
+            <!-- Pas encore de count admin ici, mais on pourrait -->
+          </a>
         </div>
       </div>
 
