@@ -4,7 +4,7 @@ import {
     psGet, 
     psGetStockAvailables, 
     psUpdateStockAvailable, 
-    psGetStockMovements, 
+    psGetStockMovementsFromOrders, 
     cleanId, 
     getXmlText, 
     extractText 
@@ -88,7 +88,7 @@ const updateQuantity = async (stockId, currentQty, amount) => {
         const productId = products.value.find(p => p.stockId === stockId)?.id;
         if (productId) {
             if (!mockMovementsCache[productId]) {
-                generateMockMovements(productId, currentQty); // generate initial if not exists
+                mockMovementsCache[productId] = [];
             }
             mockMovementsCache[productId].unshift({
                 id: `manual-${Date.now()}`,
@@ -115,62 +115,31 @@ const viewEvolution = async (product) => {
     stockMovements.value = [];
     
     try {
-        const mvts = await psGetStockMovements(product.id);
+        const orderMvts = await psGetStockMovementsFromOrders(product.id);
+        const manualMvts = mockMovementsCache[product.id] || [];
         
-        if (mvts.length > 0) {
-            stockMovements.value = mvts.map(m => ({
-                id: cleanId(m.id),
-                quantity: parseInt(getXmlText(m.physical_quantity) || '0', 10),
-                sign: parseInt(getXmlText(m.sign) || '1', 10),
-                date: getXmlText(m.date_add),
-                reason: cleanId(m.id_stock_mvt_reason)
-            })).sort((a, b) => new Date(b.date) - new Date(a.date));
-        } else {
-            // Mock data for demonstration if no movements are found
-            // PrestaShop advanced stock management is often disabled by default
-            generateMockMovements(product.id, product.quantity);
-        }
+        // Combine real orders and manual adjustments
+        const allMvts = [...orderMvts, ...manualMvts].sort((a, b) => new Date(b.date) - new Date(a.date));
+        
+        // Calculate rolling quantity backwards from current stock
+        let rollingQty = product.quantity;
+        
+        const finalMvts = allMvts.map(m => {
+            const calculatedQty = rollingQty;
+            rollingQty = rollingQty - m.change; // reverse the operation
+            return {
+                ...m,
+                quantity: calculatedQty
+            };
+        });
+        
+        stockMovements.value = finalMvts;
+        
     } catch (err) {
         console.error("Error loading stock movements:", err);
-        generateMockMovements(product.id, product.quantity);
     } finally {
         evolutionLoading.value = false;
     }
-};
-
-const generateMockMovements = (productId, currentQty) => {
-    if (mockMovementsCache[productId]) {
-        stockMovements.value = mockMovementsCache[productId];
-        return;
-    }
-
-    const mockMvts = [];
-    let rollingQty = currentQty;
-    const now = new Date();
-    
-    for (let i = 0; i < 7; i++) {
-        const date = new Date(now);
-        date.setDate(date.getDate() - i);
-        
-        // Random change between -3 and +5
-        const change = Math.floor(Math.random() * 9) - 3;
-        if (i === 0 && change === 0) continue; // Skip today if no change
-        
-        rollingQty -= change; // Backwards calculation
-        if (rollingQty < 0) rollingQty = 0;
-        
-        mockMvts.push({
-            id: `mock-${i}`,
-            change: change,
-            quantity: rollingQty + change,
-            sign: change >= 0 ? 1 : -1,
-            date: date.toISOString().split('T')[0] + ' 12:00:00',
-            reason: change >= 0 ? 'Ajout manuel' : 'Commande'
-        });
-    }
-    
-    mockMovementsCache[productId] = mockMvts;
-    stockMovements.value = mockMvts;
 };
 
 const closeEvolutionModal = () => {

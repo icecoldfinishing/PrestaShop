@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, watch, reactive } from 'vue';
-import { extractText, psGetProductFullDetails, psGetProductTaxMultiplier, cart } from '../../../utils/prestashop-api';
+import { extractText, psGetProductFullDetails, psGetProductTaxMultiplier, cart, psGet, cleanId, getXmlText } from '../../../utils/prestashop-api';
 
 type ProductDetail = {
     id: number;
@@ -15,6 +15,8 @@ type ProductDetail = {
     features: string[];
     variants: Record<string, string[]>;
     combinations: Array<{ id: string; reference: string; priceImpact: number; options: Record<string, string> }>;
+    stockData: Array<{ id_attribute: string, quantity: number }>;
+    currentStock: number;
 };
 
 const props = defineProps<{ productId: number | null }>();
@@ -82,7 +84,22 @@ const loadProduct = async (id: number | null) => {
             features: fullData.features,
             variants: fullData.variants,
             combinations: fullData.combinations || [],
+            stockData: [],
+            currentStock: 0
         };
+
+        // Fetch stock data
+        try {
+            const stockRes = await psGet('stock_availables', '', { 'filter[id_product]': `[${id}]`, display: 'full' });
+            const rawStocks = stockRes?.prestashop?.stock_availables?.stock_available;
+            const stockArr = rawStocks ? (Array.isArray(rawStocks) ? rawStocks : [rawStocks]) : [];
+            product.value.stockData = stockArr.map(s => ({
+                id_attribute: cleanId(s.id_product_attribute) || '0',
+                quantity: parseInt(getXmlText(s.quantity) || '0', 10)
+            }));
+        } catch (e) {
+            console.error('Error fetching stock:', e);
+        }
 
         // Initialisation des variantes par défaut
         for (const [group, values] of Object.entries(fullData.variants)) {
@@ -117,6 +134,10 @@ function applySelectedCombination(target: ProductDetail) {
     if (!target.combinations.length) {
         target.id_attribute = 0;
         target.priceTTC = target.priceHT * target.taxMultiplier;
+        
+        // Update stock for standard product
+        const stockInfo = target.stockData.find(s => s.id_attribute === '0');
+        target.currentStock = stockInfo ? stockInfo.quantity : 0;
         return;
     }
 
@@ -127,6 +148,9 @@ function applySelectedCombination(target: ProductDetail) {
     if (!match) {
         target.id_attribute = 0;
         target.priceTTC = target.priceHT * target.taxMultiplier;
+        
+        const stockInfo = target.stockData.find(s => s.id_attribute === '0');
+        target.currentStock = stockInfo ? stockInfo.quantity : 0;
         return;
     }
 
@@ -134,6 +158,10 @@ function applySelectedCombination(target: ProductDetail) {
     target.priceTTC = priceHtWithImpact * target.taxMultiplier;
     target.reference = match.reference || target.reference;
     target.id_attribute = Number(match.id);
+
+    // Update stock
+    const stockInfo = target.stockData.find(s => s.id_attribute === String(target.id_attribute));
+    target.currentStock = stockInfo ? stockInfo.quantity : 0;
 }
 </script>
 
@@ -155,6 +183,15 @@ function applySelectedCombination(target: ProductDetail) {
 
                 <div class="price">
                     {{ product.priceTTC.toFixed(2) }} €
+                </div>
+
+                <div class="stock-status mb-3">
+                    <span v-if="product.currentStock > 0" class="badge bg-success">
+                        En stock ({{ product.currentStock }} disponible(s))
+                    </span>
+                    <span v-else class="badge bg-danger">
+                        Rupture de stock
+                    </span>
                 </div>
 
                 <!-- SELECTEURS DE VARIANTES DYNAMIQUES -->
@@ -230,7 +267,27 @@ function applySelectedCombination(target: ProductDetail) {
     font-size: 24px;
     font-weight: bold;
     color: #e85d04;
+    margin-bottom: 15px;
+}
+
+.stock-status {
     margin-bottom: 20px;
+}
+
+.stock-status .badge {
+    padding: 6px 12px;
+    border-radius: 4px;
+    font-size: 14px;
+    color: white;
+    font-weight: bold;
+}
+
+.bg-success {
+    background-color: #2ecc71;
+}
+
+.bg-danger {
+    background-color: #e74c3c;
 }
 
 .selectors {

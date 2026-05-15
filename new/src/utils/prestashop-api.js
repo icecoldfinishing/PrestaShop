@@ -1221,20 +1221,39 @@ export async function psUpdateStockAvailable(stockId, newQuantity) {
 }
 
 /**
- * Récupère les mouvements de stock d'un produit (pour l'évolution journalière)
+ * Récupère les mouvements de stock réels d'un produit basés sur les commandes acceptées
  */
-export async function psGetStockMovements(productId = null) {
-  const params = { display: 'full' };
-  if (productId) {
-    params['filter[id_product]'] = `[${productId}]`;
-  }
+export async function psGetStockMovementsFromOrders(productId) {
   try {
-    const data = await psGet('stock_movements', '', params);
-    const raw = data?.prestashop?.stock_mvts?.stock_mvt || data?.prestashop?.stock_movements?.stock_movement;
+    const data = await psGet('orders', '', { display: 'full' });
+    const raw = data?.prestashop?.orders?.order;
     if (!raw) return [];
-    return Array.isArray(raw) ? raw : [raw];
+    
+    const orders = Array.isArray(raw) ? raw : [raw];
+    const movements = [];
+    
+    for (const o of orders) {
+      const stateId = cleanId(o.current_state);
+      // Considère l'état "2" (Paiement accepté) comme validant le retrait de stock
+      if (stateId !== '2') continue; 
+      
+      const rows = [].concat(o.associations?.order_rows?.order_row || []);
+      for (const row of rows) {
+        if (cleanId(row.product_id) === String(productId)) {
+          movements.push({
+            id: `order-${cleanId(o.id)}`,
+            change: -Math.max(1, parseInt(getXmlText(row.product_quantity), 10) || 1),
+            sign: -1,
+            date: getXmlText(o.date_add),
+            reason: `Commande #${cleanId(o.id)}`
+          });
+        }
+      }
+    }
+    
+    return movements.sort((a, b) => new Date(b.date) - new Date(a.date));
   } catch (error) {
-    console.error("Error fetching stock movements (maybe advanced stock is disabled):", error);
+    console.error("Error fetching orders for stock evolution:", error);
     return [];
   }
 }
