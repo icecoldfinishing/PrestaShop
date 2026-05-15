@@ -1,5 +1,5 @@
 import { reactive, computed } from "vue";
-import { psGet, psPut } from "../prestashop-api";
+import { psGet, psPut , psPost } from "../prestashop-api";
 import axios from 'axios';
 import { XMLBuilder, XMLParser } from 'fast-xml-parser';
 import bcrypt from 'bcryptjs';
