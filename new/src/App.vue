@@ -215,6 +215,7 @@ const switchMode = (newMode) => {
           <h5 class="text-center mb-3">Admin Panel</h5>
 
           <button class="btn btn-sm btn-outline-light w-100" @click="switchMode('FO')">
+            <i class="bi bi-shop me-1"></i>
             Retour boutique
           </button>
         </div>
@@ -227,8 +228,10 @@ const switchMode = (newMode) => {
           </div>
 
           <div v-else class="d-flex justify-content-between">
-            <div class="small">{{ loggedAdmin.email }}</div>
-            <button class="btn btn-sm btn-danger" @click="handleAdminLogout">X</button>
+            <div class="small">{{ loggedAdmin.email }}</div><button class="btn btn-sm btn-danger"
+              @click="handleAdminLogout">
+              <i class="bi bi-box-arrow-right"></i>
+            </button>
           </div>
         </div>
 
