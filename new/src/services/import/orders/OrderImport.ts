@@ -204,7 +204,7 @@ async function findCustomerByEmail(email: string): Promise<number | null> {
 async function createCustomer(name: string, email: string, password: string, orderDate: string) {
   const parts = name.trim().split(/\s+/)
   const firstname = parts[0] || "Client"
-  const lastname = parts.slice(1).join(" ") || "CSV"
+  const lastname = parts.slice(1).join(" ") || parts[0]
   const fullDate = `${orderDate} 10:00:00`
 
   const xml = `
