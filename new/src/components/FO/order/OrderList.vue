@@ -6,7 +6,7 @@ import { loggedCustomer } from '../../../utils/auth/auth-state';
 
 type OrderRow = {
   id: string;
-  total_paid: string;
+  total_paid: number;
   current_state: string;
   date_add: string;
 };
@@ -22,28 +22,24 @@ const loading = ref(false);
 
 const getStateName = (state: any) => {
   const name = state?.name?.language;
-  if (Array.isArray(name)) {
-    return getXmlText(name[0]);
-  }
+  if (Array.isArray(name)) return getXmlText(name[0]);
   return getXmlText(name);
 };
 
 const getStateLabel = (stateId: string) => {
   const state = orderStates.value.find((s) => s.id === String(stateId));
-  return state ? state.name : 'Inconnu';
+  return state?.name || 'Inconnu';
 };
 
 const loadStates = async () => {
   const data = await psGet('order_states', '', { display: 'full' });
+
   const raw = data?.prestashop?.order_states?.order_state;
-  if (!raw) {
-    orderStates.value = [];
-    return;
-  }
-  const list = Array.isArray(raw) ? raw : [raw];
-  orderStates.value = list.map((state: any) => ({
-    id: String(state.id),
-    name: getStateName(state),
+  const list = Array.isArray(raw) ? raw : raw ? [raw] : [];
+
+  orderStates.value = list.map((s: any) => ({
+    id: String(s.id),
+    name: getStateName(s),
   }));
 };
 
@@ -54,24 +50,22 @@ const loadOrders = async () => {
   }
 
   loading.value = true;
+
   try {
     const data = await psGet('orders', '', {
       display: '[id,total_paid,current_state,date_add]',
       'filter[id_customer]': `[${loggedCustomer.value.id}]`,
+      sort: '[id_DESC]'
     });
 
     const raw = data?.prestashop?.orders?.order;
-    if (!raw) {
-      orders.value = [];
-      return;
-    }
+    const list = Array.isArray(raw) ? raw : raw ? [raw] : [];
 
-    const list = Array.isArray(raw) ? raw : [raw];
     orders.value = list.map((o: any) => ({
       id: String(o.id),
-      total_paid: Number.parseFloat(o.total_paid || 0).toFixed(2),
+      total_paid: parseFloat(o.total_paid || 0),
       current_state: getXmlText(o.current_state),
-      date_add: getXmlText(o.date_add),
+      date_add: new Date(getXmlText(o.date_add)).toLocaleString(),
     }));
   } finally {
     loading.value = false;
@@ -85,26 +79,91 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="container py-4">
-    <h2 class="fw-bold mb-4">Mes commandes</h2>
+<div class="container py-4">
 
-    <div v-if="loading" class="text-center py-5">
-      <div class="spinner-border"></div>
-    </div>
-
-    <div v-else-if="orders.length" class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4">
-      <div class="col" v-for="order in orders" :key="order.id">
-        <div class="card h-100 shadow-sm border-0">
-          <div class="card-body">
-            <h5 class="fw-bold">Commande #{{ order.id }}</h5>
-            <p class="mb-1">Statut: {{ getStateLabel(order.current_state) }}</p>
-            <p class="text-primary fw-bold">{{ order.total_paid }} €</p>
-            <p class="text-muted small">{{ order.date_add }}</p>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div v-else class="text-center py-5 text-muted">Aucune commande.</div>
+  <!-- HEADER -->
+  <div class="mb-4">
+    <h2 class="fw-bold">
+      <i class="bi bi-bag-check me-2"></i>
+      Mes commandes
+    </h2>
+    <p class="text-muted mb-0">Historique de vos achats</p>
   </div>
+
+  <!-- LOADING -->
+  <div v-if="loading" class="text-center py-5">
+    <div class="spinner-border text-dark"></div>
+    <p class="text-muted mt-2">Chargement...</p>
+  </div>
+
+  <!-- EMPTY -->
+  <div v-else-if="orders.length === 0" class="text-center py-5 bg-light rounded-4">
+    <i class="bi bi-inbox display-4 text-muted"></i>
+    <p class="mt-3 text-muted">Aucune commande</p>
+  </div>
+
+  <!-- LIST -->
+  <div v-else class="row g-4">
+
+    <div class="col-md-6 col-lg-4" v-for="order in orders" :key="order.id">
+
+      <div class="card order-card border-0 shadow-sm h-100">
+
+        <div class="card-body">
+
+          <!-- HEADER CARD -->
+          <div class="d-flex justify-content-between align-items-start mb-3">
+
+            <div>
+              <h5 class="fw-bold mb-1">
+                Commande #{{ order.id }}
+              </h5>
+
+              <small class="text-muted">
+                {{ order.date_add }}
+              </small>
+            </div>
+
+            <span class="badge bg-secondary">
+              {{ getStateLabel(order.current_state) }}
+            </span>
+
+          </div>
+
+          <!-- PRICE -->
+          <div class="price-box mb-2">
+            {{ order.total_paid.toFixed(2) }} €
+          </div>
+
+          <!-- SIMPLE INFO -->
+          <div class="text-muted small">
+            Paiement enregistré
+          </div>
+
+        </div>
+
+      </div>
+
+    </div>
+
+  </div>
+
+</div>
 </template>
+<style scoped>
+.order-card {
+  border-radius: 18px;
+  transition: 0.25s ease;
+}
+
+.order-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 12px 30px rgba(0,0,0,0.08);
+}
+
+.price-box {
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: #ff6b00;
+}
+</style>

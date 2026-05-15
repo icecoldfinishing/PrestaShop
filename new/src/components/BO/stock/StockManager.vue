@@ -271,15 +271,21 @@ onMounted(() => {
                                             :disabled="updatingId === product.stockId || product.quantity <= 0">
                                             <span v-if="updatingId === product.stockId"
                                                 class="spinner-border spinner-border-sm"></span>
-                                            <span v-else>➖</span>
+
+                                            <i v-else class="bi bi-dash-lg"></i>
                                         </button>
-                                        <span class="mx-3 fw-bold">{{ product.quantity }}</span>
+
+                                        <span class="mx-3 fw-bold">
+                                            {{ product.quantity }}
+                                        </span>
+
                                         <button class="btn btn-sm btn-outline-secondary border-0"
                                             @click="updateQuantity(product, 1)"
                                             :disabled="updatingId === product.stockId">
                                             <span v-if="updatingId === product.stockId"
                                                 class="spinner-border spinner-border-sm"></span>
-                                            <span v-else>➕</span>
+
+                                            <i v-else class="bi bi-plus-lg"></i>
                                         </button>
                                     </div>
                                 </td>
@@ -336,18 +342,19 @@ onMounted(() => {
                                             <td>{{ new Date(mvt.date).toLocaleDateString('fr-FR', {
                                                 weekday: 'short',
                                                 year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit',
-                                                minute:'2-digit' }) }}</td>
+                                                minute: '2-digit'
+                                            }) }}</td>
                                             <td>{{ mvt.reason || 'Non spécifié' }}</td>
                                             <td class="text-center">
                                                 <span class="badge"
                                                     :class="mvt.sign === 1 || mvt.change > 0 ? 'bg-success' : 'bg-danger'">
                                                     {{ mvt.sign === 1 || mvt.change > 0 ? '+' : '' }}{{ mvt.change !==
-                                                    undefined ? mvt.change : mvt.quantity }}
+                                                        undefined ? mvt.change : mvt.quantity }}
                                                 </span>
                                             </td>
                                             <td class="text-end pe-3 fw-bold">
                                                 {{ mvt.quantity !== undefined && mvt.change !== undefined ? mvt.quantity
-                                                : '-' }}
+                                                    : '-' }}
                                             </td>
                                         </tr>
                                     </tbody>

@@ -212,7 +212,7 @@ const setOrderState = async (id, type, stateId) => {
             if (canceledStateId.value && currentState !== canceledStateId.value) {
                 addLog(`⏳ 1/2 — Annulation commande #${id} (état ${canceledStateId.value}) pour restockage…`);
                 await psUpdateOrderState(id, canceledStateId.value);
-                addLog(`✅ Annulée → stock remis à jour par PS`);
+                addLog(`✅Annulée → stock remis à jour par PS`);
             } else {
                 addLog(`ℹ️ Déjà annulée ou canceledStateId null — suppression directe`);
             }
@@ -309,7 +309,7 @@ onMounted(async () => {
                     <div class="card-body">
 
                         <h5 class="fw-bold">
-                            {{ item.type === 'cart' ? '🛒 Cart' : '📦 Order' }} #{{ item.id }}
+                            {{ item.type === 'cart' ? 'Cart' : 'Order' }} #{{ item.id }}
                         </h5>
 
                         <p class="text-muted mb-1">Client #{{ item.id_customer }}</p>
@@ -335,7 +335,7 @@ onMounted(async () => {
                                 :disabled="updatingId === `${item.type}-${item.id}` || isCart(item.id, item.type)"
                                 :title="item.type === 'order' ? 'Supprime la commande et libère le panier' : 'Déjà un panier'"
                                 @click="setOrderState(item.id, item.type, CART_SENTINEL)">
-                                🛒 Panier
+                                Panier
                             </button>
 
                             <button
@@ -343,7 +343,7 @@ onMounted(async () => {
                                 :class="isPaid(item.id, item.type) ? 'btn-success' : 'btn-outline-success'"
                                 :disabled="updatingId === `${item.type}-${item.id}`"
                                 @click="setOrderState(item.id, item.type, paidStateId)">
-                                ✅ Payé
+                                Payé
                             </button>
 
                             <button
@@ -351,7 +351,7 @@ onMounted(async () => {
                                 :class="isCanceled(item.id, item.type) ? 'btn-danger' : 'btn-outline-danger'"
                                 :disabled="updatingId === `${item.type}-${item.id}`"
                                 @click="setOrderState(item.id, item.type, canceledStateId)">
-                                ❌ Annulé
+                                Annulé
                             </button>
 
                         </div>
@@ -364,9 +364,9 @@ onMounted(async () => {
                                 :disabled="updatingId === `${item.type}-${item.id}`"
                                 @change="setOrderState(item.id, item.type, $event.target.value)">
                                 <option value="">— Changer le statut —</option>
-                                <option :value="CART_SENTINEL">🛒 Panier (supprime la commande)</option>
-                                <option :value="paidStateId">✅ Paiement accepté</option>
-                                <option :value="canceledStateId">❌ Annulé</option>
+                                <option :value="CART_SENTINEL">Panier (supprime la commande)</option>
+                                <option :value="paidStateId">Paiement accepté</option>
+                                <option :value="canceledStateId">Annulé</option>
                             </select>
                         </div>
 

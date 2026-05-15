@@ -1,5 +1,5 @@
 import { reactive, computed } from "vue";
-import { psGet, psPut , psPost } from "../prestashop-api";
+import { psGet, psPut , psPost, PS_PUBLIC_ORIGIN } from "../prestashop-api";
 import axios from 'axios';
 import { XMLBuilder, XMLParser } from 'fast-xml-parser';
 import bcrypt from 'bcryptjs';
@@ -267,7 +267,7 @@ export async function psLoadCartItems(cartId) {
 
   const productIds = rawRows.map((row) => cleanId(row.id_product)).filter(Boolean);
   const products = await Promise.all(
-    productIds.map((pid) => psGet('products', pid, { display: '[id,price,name,reference,id_tax_rules_group]' }))
+    productIds.map((pid) => psGet('products', pid, { display: '[id,price,name,reference,id_tax_rules_group,associations]' }))
   );
 
   return await Promise.all(rawRows.map(async (row, idx) => {
@@ -275,6 +275,11 @@ export async function psLoadCartItems(cartId) {
     const attr = cleanId(row.id_product_attribute) || '0';
     const qty = Math.max(1, parseInt(getXmlText(row.quantity), 10) || 1);
     const p = products[idx]?.prestashop?.product;
+
+    const images = [].concat(p?.associations?.images?.image || []).filter(Boolean);
+    const imageId = images.length > 0 ? cleanId(images[0].id) : null;
+    const imageUrl = imageId ? `${PS_PUBLIC_ORIGIN}/api/images/products/${pid}/${imageId}` : null;
+
     const priceHt = Number.parseFloat(getXmlText(p?.price) || '0') || 0;
     const taxMultiplier = await psGetProductTaxMultiplier(p);
     const impactHt = await psGetCombinationPriceImpact(attr);
@@ -292,6 +297,7 @@ export async function psLoadCartItems(cartId) {
       reference,
       price: priceTtc,
       quantity: qty,
+      imageUrl
     };
   }));
 }

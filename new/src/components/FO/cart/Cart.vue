@@ -107,152 +107,415 @@ const clearCart = () => {
 </script>
 
 <template>
-    <div class="cart-container container mt-4">
-        <div class="d-flex justify-content-between align-items-center mb-3">
-            <h2 class="mb-0">🛒 Panier</h2>
+    <div class="cart-page container py-4">
+
+        <!-- HEADER -->
+        <div class="cart-header d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4">
             <div>
-                <button type="button" class="btn btn-outline-info btn-sm me-2" @click="debugLog = []">
-                    Vider logs
-                </button>
+                <h2 class="fw-bold mb-1">
+                    <i class="bi bi-cart3 me-2"></i>
+                    Mon panier
+                </h2>
+                <p class="text-muted mb-0">
+                    {{ totalItems }} article(s) dans votre panier
+                </p>
             </div>
+
+            <button
+                type="button"
+                class="btn btn-outline-dark rounded-pill px-4"
+                @click="debugLog = []"
+            >
+                <i class="bi bi-trash3 me-2"></i>
+                Vider logs
+            </button>
         </div>
 
-        <div v-if="debugLog.length" class="bg-dark text-white p-3 rounded mb-4 small style-logs">
+        <!-- LOGS -->
+        <div
+            v-if="debugLog.length"
+            class="logs-box mb-4"
+        >
             <div
                 v-for="(log, i) in debugLog"
                 :key="i"
                 :class="{ 'text-danger': log.includes('❌') }"
+                class="mb-1"
             >
                 <code>{{ log }}</code>
             </div>
         </div>
 
-        <div v-if="cart.items.length === 0" class="empty-cart text-center p-5 bg-white rounded shadow-sm">
-            <p class="mt-3 fs-5 text-muted">Votre panier est vide.</p>
-            <button type="button" class="btn btn-primary mt-2" @click="emit('continueShopping')">
+        <!-- EMPTY -->
+        <div
+            v-if="cart.items.length === 0"
+            class="empty-cart text-center"
+        >
+            <div class="empty-icon">
+                <i class="bi bi-cart-x"></i>
+            </div>
+
+            <h3 class="fw-bold mt-3">
+                Votre panier est vide
+            </h3>
+
+            <p class="text-muted">
+                Ajoutez des produits pour commencer vos achats.
+            </p>
+
+            <button
+                type="button"
+                class="btn btn-dark rounded-pill px-4 py-2 mt-2"
+                @click="emit('continueShopping')"
+            >
                 Continuer les achats
             </button>
         </div>
 
-        <div v-else class="row">
+        <!-- CART -->
+        <div
+            v-else
+            class="row g-4"
+        >
+
+            <!-- LEFT -->
             <div class="col-lg-8">
-                <div class="card shadow-sm mb-4">
-                    <div class="list-group list-group-flush">
-                        <div
-                            v-for="item in cart.items"
-                            :key="item.cartId"
-                            class="list-group-item p-3"
-                        >
-                            <div class="row align-items-center">
-                                <div class="col-2">
+
+                <div class="cart-items">
+
+                    <div
+                        v-for="item in cart.items"
+                        :key="item.cartId"
+                        class="cart-item"
+                    >
+                        <div class="row align-items-center g-3">
+
+                            <!-- IMAGE -->
+                            <div class="col-md-2 col-4">
+
+                                <div class="product-image-box">
+
                                     <img
-                                        :src="item.imageUrl || 'https://via.placeholder.com/100'"
-                                        class="img-fluid rounded"
-                                        alt=""
+                                        v-if="item.imageUrl"
+                                        :src="item.imageUrl"
+                                        class="product-image"
+                                        @error="($event.target as HTMLImageElement).style.display='none'"
                                     />
-                                </div>
-                                <div class="col-4">
-                                    <h6 class="mb-0">{{ item.name }}</h6>
-                                    <small
-                                        v-for="(val, label) in item.variants"
-                                        :key="String(label)"
-                                        class="text-muted d-block"
+
+                                    <div
+                                        v-else
+                                        class="image-fallback"
                                     >
-                                        {{ label }}: {{ val }}
-                                    </small>
-                                </div>
-                                <div class="col-2 text-center">
-                                    <span class="fw-bold">{{ item.price.toFixed(2) }} €</span>
-                                </div>
-                                <div class="col-2">
-                                    <div class="input-group input-group-sm">
-                                        <span class="input-group-text"></span>
-                                        <input
-                                            class="form-control"
-                                            type="number"
-                                            min="1"
-                                            :value="item.quantity"
-                                            @input="updateQuantity(item.cartId, Number(($event.target as HTMLInputElement).value))"
-                                        />
+                                        <i class="bi bi-image"></i>
                                     </div>
+
                                 </div>
-                                <div class="col-2 text-end">
-                                    <button
-                                        type="button"
-                                        class="btn btn-outline-danger btn-sm"
-                                        @click="removeItem(item.cartId)"
-                                    >
-                                        Retirer
-                                    </button>
+
+                            </div>
+
+                            <!-- INFOS -->
+                            <div class="col-md-4 col-8">
+
+                                <h6 class="fw-bold mb-1">
+                                    {{ item.name }}
+                                </h6>
+
+                                <small class="text-muted d-block mb-1">
+                                    Ref : {{ item.reference }}
+                                </small>
+
+                                <small
+                                    v-for="(val, label) in item.variants"
+                                    :key="String(label)"
+                                    class="badge text-bg-light border me-1 mb-1"
+                                >
+                                    {{ label }} : {{ val }}
+                                </small>
+
+                            </div>
+
+                            <!-- PRICE -->
+                            <div class="col-md-2 col-4 text-md-center">
+                                <div class="price-tag">
+                                    {{ item.price.toFixed(2) }} €
                                 </div>
                             </div>
+
+                            <!-- QUANTITY -->
+                            <div class="col-md-2 col-4">
+
+                                <input
+                                    class="form-control qty-input"
+                                    type="number"
+                                    min="1"
+                                    :value="item.quantity"
+                                    @input="updateQuantity(item.cartId, Number(($event.target as HTMLInputElement).value))"
+                                />
+
+                            </div>
+
+                            <!-- REMOVE -->
+                            <div class="col-md-2 col-4 text-end">
+
+                                <button
+                                    type="button"
+                                    class="btn btn-remove"
+                                    @click="removeItem(item.cartId)"
+                                >
+                                    <i class="bi bi-trash3"></i>
+                                </button>
+
+                            </div>
+
                         </div>
                     </div>
+
                 </div>
 
-                <button type="button" class="btn btn-link text-danger p-0 mb-3" @click="clearCart">
+                <button
+                    type="button"
+                    class="btn btn-outline-danger rounded-pill mt-3"
+                    @click="clearCart"
+                >
+                    <i class="bi bi-trash me-2"></i>
                     Vider le panier
                 </button>
+
             </div>
 
+            <!-- RIGHT -->
             <div class="col-lg-4">
-                <div class="card shadow-sm border-primary">
-                    <div class="card-body">
-                        <h5 class="card-title mb-4">Résumé</h5>
-                        <div class="d-flex justify-content-between mb-2">
-                            <span>Articles ({{ totalItems }})</span>
-                            <span>{{ totalPrice.toFixed(2) }} €</span>
-                        </div>
-                        <div class="d-flex justify-content-between mb-2">
-                            <span>Livraison</span>
-                            <span class="text-success">—</span>
-                        </div>
-                        <hr />
-                        <div class="d-flex justify-content-between mb-4">
-                            <span class="h5">Total TTC</span>
-                            <span class="h5 text-primary">{{ totalPrice.toFixed(2) }} €</span>
-                        </div>
 
-                        <button
-                            type="button"
-                            class="btn btn-success w-100 fw-bold py-2"
-                            :disabled="isTesting"
-                            @click="handleCheckout"
-                        >
-                            {{ isTesting ? 'En cours…' : 'Valider la commande' }}
-                        </button>
+                <div class="summary-card">
 
-                        <button
-                            type="button"
-                            class="btn btn-outline-secondary w-100 mt-2 btn-sm"
-                            @click="emit('continueShopping')"
-                        >
-                            Continuer les achats
-                        </button>
+                    <h4 class="fw-bold mb-4">
+                        Résumé
+                    </h4>
+
+                    <div class="summary-row">
+                        <span>Articles</span>
+                        <strong>{{ totalItems }}</strong>
                     </div>
+
+                    <div class="summary-row">
+                        <span>Sous-total</span>
+                        <strong>{{ totalPrice.toFixed(2) }} €</strong>
+                    </div>
+
+                    <div class="summary-row">
+                        <span>Livraison</span>
+                        <strong class="text-success">Gratuite</strong>
+                    </div>
+
+                    <hr />
+
+                    <div class="summary-total">
+                        <span>Total TTC</span>
+                        <span>{{ totalPrice.toFixed(2) }} €</span>
+                    </div>
+
+                    <button
+                        type="button"
+                        class="btn btn-checkout w-100"
+                        :disabled="isTesting"
+                        @click="handleCheckout"
+                    >
+                        <span v-if="!isTesting">
+                            <i class="bi bi-credit-card me-2"></i>
+                            Valider la commande
+                        </span>
+
+                        <span v-else>
+                            <span class="spinner-border spinner-border-sm me-2"></span>
+                            Traitement...
+                        </span>
+                    </button>
+
+                    <button
+                        type="button"
+                        class="btn btn-outline-secondary w-100 mt-3 rounded-pill"
+                        @click="emit('continueShopping')"
+                    >
+                        Continuer les achats
+                    </button>
+
                 </div>
+
             </div>
+
         </div>
     </div>
 </template>
 
 <style scoped>
-.cart-container {
-    max-width: 1000px;
+.cart-page {
+    max-width: 1250px;
 }
-.style-logs code {
+
+/* HEADER */
+.cart-header h2 {
+    font-size: 2rem;
+}
+
+/* LOGS */
+.logs-box {
+    background: #111827;
+    color: white;
+    padding: 16px;
+    border-radius: 16px;
+    max-height: 250px;
+    overflow-y: auto;
+}
+
+.logs-box code {
     white-space: pre-wrap;
     word-break: break-word;
 }
-.card {
-    border: none;
+
+/* EMPTY */
+.empty-cart {
+    background: white;
+    padding: 70px 20px;
+    border-radius: 24px;
+    box-shadow: 0 8px 30px rgba(0,0,0,0.06);
+}
+
+.empty-icon {
+    font-size: 5rem;
+    color: #ced4da;
+}
+
+/* CART ITEMS */
+.cart-items {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.cart-item {
+    background: white;
+    border-radius: 20px;
+    padding: 20px;
+    box-shadow: 0 6px 25px rgba(0,0,0,0.05);
+    transition: all 0.25s ease;
+}
+
+.cart-item:hover {
+    transform: translateY(-2px);
+}
+
+/* IMAGE */
+.product-image-box {
+    width: 100%;
+    aspect-ratio: 1/1;
+    background: #f8f9fa;
+    border-radius: 18px;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.product-image {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    padding: 10px;
+}
+
+.image-fallback {
+    font-size: 2rem;
+    color: #adb5bd;
+}
+
+/* PRICE */
+.price-tag {
+    font-weight: 700;
+    font-size: 1.1rem;
+    color: #ff6b00;
+}
+
+/* QUANTITY */
+.qty-input {
     border-radius: 12px;
+    text-align: center;
+    font-weight: 600;
+    border: 1px solid #dee2e6;
+    padding: 10px;
 }
-.list-group-item {
-    border-left: none;
-    border-right: none;
+
+.qty-input:focus {
+    border-color: #ff6b00;
+    box-shadow: 0 0 0 0.2rem rgba(255,107,0,0.15);
 }
-.list-group-item:first-child {
-    border-top: none;
+
+/* REMOVE */
+.btn-remove {
+    width: 44px;
+    height: 44px;
+    border-radius: 14px;
+    border: none;
+    background: #fff1f2;
+    color: #dc3545;
+    transition: all 0.2s ease;
+}
+
+.btn-remove:hover {
+    background: #dc3545;
+    color: white;
+}
+
+/* SUMMARY */
+.summary-card {
+    background: white;
+    border-radius: 24px;
+    padding: 28px;
+    box-shadow: 0 8px 30px rgba(0,0,0,0.06);
+    position: sticky;
+    top: 20px;
+}
+
+.summary-row,
+.summary-total {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 16px;
+}
+
+.summary-total {
+    font-size: 1.3rem;
+    font-weight: 700;
+}
+
+/* BUTTON */
+.btn-checkout {
+    background: linear-gradient(135deg, #ff6b00, #ff8c42);
+    color: white;
+    border: none;
+    border-radius: 16px;
+    padding: 14px;
+    font-weight: 700;
+    transition: all 0.25s ease;
+}
+
+.btn-checkout:hover {
+    transform: translateY(-2px);
+    opacity: 0.95;
+}
+
+/* MOBILE */
+@media (max-width: 768px) {
+
+    .cart-header h2 {
+        font-size: 1.5rem;
+    }
+
+    .summary-card {
+        position: static;
+    }
+
+    .cart-item {
+        padding: 16px;
+    }
 }
 </style>

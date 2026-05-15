@@ -166,256 +166,398 @@ function applySelectedCombination(target: ProductDetail) {
 }
 </script>
 
+
 <template>
-    <section class="detail">
-        <button class="back" @click="emit('back')">← Retour</button>
+<section class="detail container py-4">
 
-        <div v-if="loading" class="state">Chargement...</div>
 
-        <div v-else-if="product" class="layout">
-            <div class="media">
-                <img v-if="product.imageUrl" :src="product.imageUrl" />
-                <div v-else class="media-fallback">Pas d'image</div>
+    <div v-if="loading" class="text-center py-5">
+        <div class="spinner-border text-dark"></div>
+        <p class="mt-3 text-muted">Chargement du produit...</p>
+    </div>
+
+    <div v-else-if="product" class="product-card p-4">
+        <div class="row g-5 align-items-start">
+
+            <!-- IMAGE -->
+            <div class="col-lg-5">
+                <div class="product-image-wrapper">
+                    <img
+                        v-if="product.imageUrl"
+                        :src="product.imageUrl"
+                        class="img-fluid product-image"
+                    />
+
+                    <div v-else class="media-fallback">
+                        <i class="bi bi-image fs-1"></i>
+                    </div>
+                </div>
             </div>
 
-            <div class="info">
-                <p class="meta">Ref: {{ product.reference }}</p>
-                <h2>{{ product.name }}</h2>
+            <!-- INFOS -->
+            <div class="col-lg-7">
 
-                <div class="price">
-                    {{ product.priceTTC.toFixed(2) }} €
+                <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+                    <div>
+                        <p class="product-ref mb-1">
+                            Référence : {{ product.reference }}
+                        </p>
+
+                        <h1 class="product-title">
+                            {{ product.name }}
+                        </h1>
+                    </div>
+
+                    <div class="stock-status">
+                        <span
+                            v-if="product.currentStock > 0"
+                            class="badge bg-success fs-6 px-3 py-2"
+                        >
+                            <i class="bi bi-check-circle me-1"></i>
+                            {{ product.currentStock }} en stock
+                        </span>
+
+                        <span
+                            v-else
+                            class="badge bg-danger fs-6 px-3 py-2"
+                        >
+                            <i class="bi bi-x-circle me-1"></i>
+                            Rupture
+                        </span>
+                    </div>
                 </div>
 
-                <div class="stock-status mb-3">
-                    <span v-if="product.currentStock > 0" class="badge bg-success">
-                        En stock ({{ product.currentStock }} disponible(s))
-                    </span>
-                    <span v-else class="badge bg-danger">
-                        Rupture de stock
-                    </span>
+                <!-- PRIX -->
+                <div class="price-box">
+                    <div class="price-label">
+                        Prix TTC
+                    </div>
+
+                    <div class="price-value">
+                        {{ product.priceTTC.toFixed(2) }} €
+                    </div>
                 </div>
 
-                <!-- SELECTEURS DE VARIANTES DYNAMIQUES -->
-                <div class="selectors" v-if="Object.keys(product.variants).length > 0">
-                    <div v-for="(values, groupName) in product.variants" :key="groupName" class="select-group">
-                        <label>{{ groupName }}</label>
-                        <!-- Utilisation de v-model pour capturer le choix -->
-                        <select v-model="selectedOptions[groupName]">
-                            <option v-for="val in values" :key="val" :value="val">
+                <!-- VARIANTES -->
+                <div
+                    class="variant-box mb-4"
+                    v-if="Object.keys(product.variants).length > 0"
+                >
+                    <div
+                        class="mb-3"
+                        v-for="(values, groupName) in product.variants"
+                        :key="groupName"
+                    >
+                        <label class="form-label">
+                            {{ groupName }}
+                        </label>
+
+                        <select
+                            class="form-select"
+                            v-model="selectedOptions[groupName]"
+                        >
+                            <option
+                                v-for="val in values"
+                                :key="val"
+                                :value="val"
+                            >
                                 {{ val }}
                             </option>
                         </select>
                     </div>
                 </div>
 
-                <!-- BOUTONS D'ACTION -->
-                <div class="actions">
-                    <div class="qty">
-                        <label>Quantite</label>
-                        <input v-model.number="quantity" type="number" min="1" />
+                <!-- ACTIONS -->
+                <div class="row g-3 align-items-end action-buttons">
+
+                    <div class="col-md-3">
+                        <div class="qty-box">
+                            <label class="form-label fw-semibold">
+                                Quantité
+                            </label>
+
+                            <input
+                                v-model.number="quantity"
+                                type="number"
+                                min="1"
+                                class="form-control"
+                            />
+                        </div>
                     </div>
-                    <button class="btn-add" :class="{ active: addingToCart }" @click="handleCart(false)">
-                        <span v-if="!addingToCart">Ajouter au panier</span>
-                        <span v-else>Ajout...</span>
-                    </button> <button class="btn-buy" @click="handleCart(true)">Acheter maintenant</button>
+
+                    <div class="col-md-4">
+                        <button
+                            class="btn btn-cart w-100"
+                            :class="{ active: addingToCart }"
+                            @click="handleCart(false)"
+                        >
+                            <span v-if="!addingToCart">
+                                <i class="bi bi-cart-plus me-2"></i>
+                                Ajouter
+                            </span>
+
+                            <span v-else>
+                                <span class="spinner-border spinner-border-sm me-2"></span>
+                                Ajout...
+                            </span>
+                        </button>
+                    </div>
+
+                    <div class="col-md-5">
+                        <button
+                            class="btn btn-buy w-100"
+                            @click="handleCart(true)"
+                        >
+                            <i class="bi bi-lightning-charge-fill me-2"></i>
+                            Acheter maintenant
+                        </button>
+                    </div>
                 </div>
 
-                <div class="section specs" v-if="product.features.length > 0">
-                    <h3>Caractéristiques</h3>
-                    <ul>
-                        <li v-for="f in product.features" :key="f">{{ f }}</li>
-                    </ul>
-                </div>
-
-                <div class="section">
-                    <h3>Description</h3>
-                    <div class="desc" v-html="product.description"></div>
-                </div>
             </div>
         </div>
-    </section>
+
+        <!-- CARACTÉRISTIQUES -->
+        <div
+            class="section-card"
+            v-if="product.features.length > 0"
+        >
+            <h3 class="section-title">
+                <i class="bi bi-list-check me-2"></i>
+                Caractéristiques
+            </h3>
+
+            <ul class="feature-list list-unstyled mb-0">
+                <li
+                    v-for="f in product.features"
+                    :key="f"
+                >
+                    <i class="bi bi-check2-circle text-success me-2"></i>
+                    {{ f }}
+                </li>
+            </ul>
+        </div>
+
+        <!-- DESCRIPTION -->
+        <div class="section-card">
+            <h3 class="section-title">
+                <i class="bi bi-file-text me-2"></i>
+                Description
+            </h3>
+
+            <div
+                class="desc"
+                v-html="product.description"
+            ></div>
+        </div>
+
+    </div>
+    
+    <button class="btn btn-dark back-btn mb-4" @click="emit('back')">
+        <i class="bi bi-arrow-left me-2"></i>
+        Retour
+    </button>
+</section>
 </template>
-
 <style scoped>
-/* Tes styles restent identiques */
 .detail {
-    padding: 24px;
-    font-family: sans-serif;
+    padding: 2rem 0;
+    background: #f5f7fb;
+    min-height: 100vh;
 }
 
-.back {
-    background: #111;
-    color: white;
-    padding: 10px;
-    border-radius: 8px;
-    cursor: pointer;
-    border: none;
-    margin-bottom: 20px;
-}
-
-.layout {
-    display: grid;
-    grid-template-columns: 1fr 1.5fr;
-    gap: 30px;
-}
-
-.media img {
-    max-width: 100%;
-    border-radius: 8px;
-}
-
-.price {
-    font-size: 24px;
-    font-weight: bold;
-    color: #e85d04;
-    margin-bottom: 15px;
-}
-
-.stock-status {
-    margin-bottom: 20px;
-}
-
-.stock-status .badge {
-    padding: 6px 12px;
-    border-radius: 4px;
-    font-size: 14px;
-    color: white;
-    font-weight: bold;
-}
-
-.bg-success {
-    background-color: #2ecc71;
-}
-
-.bg-danger {
-    background-color: #e74c3c;
-}
-
-.selectors {
-    display: flex;
-    flex-direction: column;
-    gap: 15px;
-    margin: 20px 0;
-    padding: 15px;
-    background: #f8f9fa;
-    border-radius: 8px;
-}
-
-.select-group {
-    display: flex;
-    flex-direction: column;
-}
-
-.select-group label {
-    font-weight: bold;
-    margin-bottom: 5px;
-    color: #555;
-}
-
-.select-group select {
-    padding: 10px;
-    border: 1px solid #ccc;
-    border-radius: 4px;
-}
-
-.actions {
-    display: flex;
-    gap: 10px;
-    margin-top: 20px;
-}
-
-.btn-add,
-.btn-buy {
-    flex: 1;
-    padding: 15px;
-    border-radius: 8px;
-    font-weight: bold;
-    cursor: pointer;
-    border: none;
-    transition: opacity 0.2s;
-}
-
-.btn-add {
-    background: #f0f0f0;
-    color: #111;
-    border: 1px solid #ccc;
-    border-radius: 10px;
-    padding: 15px;
-    font-weight: bold;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    position: relative;
+.product-card {
+    background: #fff;
+    border-radius: 20px;
     overflow: hidden;
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.08);
 }
 
+.back-btn {
+    border-radius: 12px;
+    font-weight: 600;
+    padding: 10px 18px;
+}
+
+.product-image-wrapper {
+    background: linear-gradient(135deg, #f8f9fa, #eef2f7);
+    border-radius: 18px;
+    padding: 25px;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.product-image {
+    max-height: 450px;
+    object-fit: contain;
+    transition: transform 0.3s ease;
+}
+
+.product-image:hover {
+    transform: scale(1.03);
+}
+
+.media-fallback {
+    width: 100%;
+    height: 400px;
+    border: 2px dashed #ced4da;
+    border-radius: 15px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #6c757d;
+    background: #fff;
+    font-size: 1.1rem;
+}
+
+.product-title {
+    font-size: 2rem;
+    font-weight: 700;
+    color: #212529;
+    margin-bottom: 0.5rem;
+}
+
+.product-ref {
+    color: #6c757d;
+    font-size: 0.95rem;
+}
+
+.price-box {
+    background: linear-gradient(135deg, #ff6b00, #ff8c42);
+    color: white;
+    border-radius: 16px;
+    padding: 20px;
+    margin: 20px 0;
+}
+
+.price-label {
+    font-size: 0.9rem;
+    opacity: 0.85;
+}
+
+.price-value {
+    font-size: 2rem;
+    font-weight: 700;
+}
+
+.variant-box {
+    background: #f8f9fa;
+    border-radius: 16px;
+    padding: 20px;
+    border: 1px solid #e9ecef;
+}
+
+.variant-box label {
+    font-weight: 600;
+    margin-bottom: 8px;
+    color: #495057;
+}
+
+.form-select,
+.form-control {
+    border-radius: 12px;
+    padding: 12px;
+    border: 1px solid #dee2e6;
+}
+
+.form-select:focus,
+.form-control:focus {
+    box-shadow: 0 0 0 0.2rem rgba(255, 107, 0, 0.15);
+    border-color: #ff6b00;
+}
+
+.qty-box {
+    max-width: 140px;
+}
+
+.action-buttons .btn {
+    border-radius: 14px;
+    padding: 14px;
+    font-weight: 600;
+    transition: all 0.25s ease;
+}
+
+.btn-cart {
+    background: #212529;
+    color: white;
+    border: none;
+}
+
+.btn-cart:hover {
+    background: #000;
+    transform: translateY(-2px);
+}
 
 .btn-buy {
-    background: #e85d04;
+    background: linear-gradient(135deg, #ff6b00, #ff8c42);
     color: white;
+    border: none;
 }
 
-.btn-add:hover {
+.btn-buy:hover {
+    opacity: 0.92;
     transform: translateY(-2px);
-    box-shadow: 0 6px 15px rgba(0,0,0,0.1);
 }
 
-
-.qty {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    min-width: 120px;
+.btn-cart.active {
+    background: #198754;
+    animation: pulse 0.5s ease;
 }
 
-.qty label {
-    font-weight: bold;
-    color: #555;
+.feature-list li {
+    padding: 10px 0;
+    border-bottom: 1px solid #eee;
 }
 
-.qty input {
-    padding: 10px;
-    border: 1px solid #ccc;
-    border-radius: 6px;
+.feature-list li:last-child {
+    border-bottom: none;
 }
 
-.section {
-    margin-top: 20px;
+.section-card {
+    background: white;
+    border-radius: 16px;
+    padding: 24px;
+    margin-top: 24px;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.05);
 }
 
-.specs ul {
-    list-style: disc;
-    padding-left: 20px;
+.section-title {
+    font-size: 1.2rem;
+    font-weight: 700;
+    margin-bottom: 18px;
+    color: #212529;
 }
 
 .desc {
-    line-height: 1.5;
-}
-/* Click animation */
-.btn-add:active {
-    transform: scale(0.96);
+    line-height: 1.8;
+    color: #495057;
 }
 
-/* État actif (ajout panier) */
-.btn-add.active {
-    background: #2ecc71;
-    color: white;
-    border-color: #2ecc71;
-    animation: pulse 0.6s ease;
-}
-
-/* Effet pulse */
 @keyframes pulse {
     0% {
         transform: scale(1);
-        box-shadow: 0 0 0 rgba(46, 204, 113, 0.5);
     }
     50% {
-        transform: scale(1.05);
-        box-shadow: 0 0 20px rgba(46, 204, 113, 0.6);
+        transform: scale(1.04);
     }
     100% {
         transform: scale(1);
-        box-shadow: 0 0 0 rgba(46, 204, 113, 0);
+    }
+}
+
+@media (max-width: 991px) {
+    .product-title {
+        font-size: 1.5rem;
+    }
+
+    .price-value {
+        font-size: 1.6rem;
+    }
+
+    .product-image {
+        max-height: 300px;
     }
 }
 </style>

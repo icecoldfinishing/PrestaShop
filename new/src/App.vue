@@ -14,8 +14,6 @@ import ProductDetailFO from "./components/FO/product/ProductDetail.vue";
 import Cart from "./components/FO/cart/Cart.vue";
 import FoOrders from "./components/FO/order/OrderList.vue";
 
-
-
 import OrderList from "./components/BO/order/OrderList.vue";
 import StockManager from "./components/BO/stock/StockManager.vue";
 import DataResetManager from "./components/BO/reset/DataResetManager.vue";
@@ -184,8 +182,8 @@ const switchMode = (newMode) => {
   <div class="d-flex flex-column vh-100">
 
     <!-- ================= FO NAV ================= -->
-    <nav v-if="mode === 'FO'" class="navbar navbar-dark bg-dark px-3">
-      <span class="navbar-brand fw-bold">Shop</span>
+    <nav v-if="mode === 'FO'" class="navbar navbar-dark bg-dark px-3 fo-navbar"> <span
+        class="navbar-brand fw-bold">Shop</span>
 
       <div class="d-flex gap-2">
         <button class="btn btn-outline-light btn-sm" @click="goToHomeFO">
@@ -206,11 +204,10 @@ const switchMode = (newMode) => {
       </div>
     </nav>
 
-    <div class="d-flex flex-grow-1">
+    <div class="d-flex flex-grow-1 overflow-hidden">
 
       <!-- ================= BO SIDEBAR ================= -->
-      <div v-if="mode === 'BO'" class="bg-dark text-white d-flex flex-column" style="width: 260px;">
-
+      <div v-if="mode === 'BO'" class="bg-dark text-white d-flex flex-column bo-sidebar">
         <div class="p-3 border-bottom border-secondary">
           <h5 class="text-center mb-3">Admin Panel</h5>
 
@@ -235,7 +232,7 @@ const switchMode = (newMode) => {
           </div>
         </div>
 
-        <div v-if="isAdmin" class="p-2">
+        <div v-if="isAdmin" class="p-2 overflow-y-auto">
           <a class="nav-link text-white" :class="{ 'bg-primary': currentPage === PAGE.BO_HOME }"
             @click="currentPage = PAGE.BO_HOME">Home</a>
 
@@ -249,7 +246,7 @@ const switchMode = (newMode) => {
       </div>
 
       <!-- ================= MAIN ================= -->
-      <div class="flex-grow-1 p-4 bg-light">
+      <div class="main-content p-4 bg-light" :class="{ 'fo-mode': mode === 'FO', 'bo-mode': mode === 'BO' }">
 
         <!-- ================= FO CHOIX UTILISATEUR ================= -->
         <FoUserPick v-if="mode === 'FO' && currentPage === PAGE.FO_USER_PICK" @choose-login="onChooseFoLogin"
@@ -262,8 +259,8 @@ const switchMode = (newMode) => {
         <!-- ================= FO BARRE SESSION ================= -->
         <div
           v-if="mode === 'FO' && loggedCustomer && currentPage !== PAGE.FO_USER_PICK && currentPage !== PAGE.FO_LOGIN"
-          class="alert d-flex justify-content-between"
-          :class="loggedCustomer?.guest ? 'alert-secondary' : 'alert-success'">
+          class="alert d-flex justify-content-between border"
+          :class="loggedCustomer?.guest ? 'bg-light text-muted' : 'bg-body-secondary text-dark'">
           <div>
             <template v-if="loggedCustomer?.guest">
               <b>Mode invité</b> — navigation sans compte client
@@ -306,6 +303,40 @@ const switchMode = (newMode) => {
 </template>
 
 <style scoped>
+.fo-navbar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 56px;
+  z-index: 1050;
+  display: flex;
+  align-items: center;
+}
+
+.bo-sidebar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 240px;
+  z-index: 1040;
+}
+
+.main-content {
+  flex-grow: 1;
+  min-height: 100%;
+  overflow-y: auto;
+}
+
+.main-content.fo-mode {
+  padding-top: 76px !important; /* 56px navbar + padding */
+}
+
+.main-content.bo-mode {
+  margin-left: 240px;
+}
+
 .nav-link {
   padding: 10px;
   border-radius: 6px;
