@@ -81,9 +81,66 @@ export async function psUpdateStockAvailable(stockId, newQuantity) {
 }
 
 /**
- * Récupère les mouvements de stock réels d'un produit basés sur les commandes acceptées
+ * Met à jour la quantité de stock d'un produit (et déclinaison) via un delta.
+ * Simule StockAvailable::updateQuantity($idProduct, $idAttribute, $delta)
+ */
+/**
+ * Met à jour la quantité de stock via le NOUVEAU endpoint réel (delta).
+ * Appelle directement StockAvailable::updateQuantity($idProduct, $idAttribute, $delta) sur PrestaShop.
+ */
+export async function psUpdateStockQuantity(productId, attributeId, delta) {
+  try {
+    const response = await axios.get('/stock-update', {
+      params: {
+        ws_key: API_KEY,
+        id_product: productId,
+        id_product_attribute: attributeId || 0,
+        delta: delta
+      }
+    });
+    return response.data;
+  } catch (error) {
+    console.error("Error calling stock-update.php:", error);
+    throw error;
+  }
+}
+
+
+/**
+ * Récupère les mouvements de stock réels via la ressource stock_mvts
+ */
+export async function psGetStockMovements(productId, productAttributeId = '0') {
+  try {
+    const data = await psGet('stock_mvts', '', {
+      display: 'full',
+      'filter[id_product]': `[${productId}]`,
+      'filter[id_product_attribute]': `[${productAttributeId}]`,
+      'sort': '[date_add_DESC]'
+    });
+
+    const raw = data?.prestashop?.stock_mvts?.stock_mvt;
+    if (!raw) return [];
+    
+    const mvts = Array.isArray(raw) ? raw : [raw];
+    return mvts.map(m => ({
+      id: `mvt-${cleanId(m.id)}`,
+      change: parseInt(getXmlText(m.quantity), 10) * (parseInt(getXmlText(m.sign), 10) || 1),
+      sign: parseInt(getXmlText(m.sign), 10) || 1,
+      date: getXmlText(m.date_add),
+      reason: `Mouvement #${cleanId(m.id)}`
+    }));
+  } catch (error) {
+    console.error("Error fetching stock_mvts:", error);
+    return [];
+  }
+}
+
+
+/**
+ * Récupère les mouvements de stock basés sur les commandes (Fallback)
  */
 export async function psGetStockMovementsFromOrders(productId, productAttributeId = '0') {
+// ... existing code ...
   try {
     const data = await psGet('orders', '', { display: 'full' });
     const raw = data?.prestashop?.orders?.order;

@@ -234,13 +234,13 @@ const setOrderState = async (id, type, stateId) => {
             addLog(`✅ Statut mis à jour`);
         }
 
-        await refresh();
-
-    } catch (err) {
-        addLog(`❌ ERREUR: ${err.message}`);
-        console.error('[setOrderState]', err);
     } finally {
-        updatingId.value = null;
+        // Petit délai pour laisser PrestaShop traiter l'historique en DB
+        setTimeout(async () => {
+            await refresh();
+            updatingId.value = null;
+            addLog(`🔄 Données rafraîchies`);
+        }, 500);
     }
 };
 

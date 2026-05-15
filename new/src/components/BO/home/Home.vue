@@ -143,7 +143,7 @@ onMounted(() => {
                         <div class="stat-icon mb-2">
                             <i class="bi bi-receipt"></i>
                         </div>
-                        <h5 class="text-muted">Commandes (total)</h5>
+                        <h5 class="text-muted">Commandes (acceptées)</h5>
                         <h2 class="fw-bold text-warning">{{ stats.orders }}</h2>
                     </div>
                 </div>
@@ -153,7 +153,7 @@ onMounted(() => {
         <!-- TABLEAU DE BORD COMMANDES -->
         <div class="card shadow-sm border-0 mb-5">
             <div class="card-header bg-white border-bottom py-3 d-flex justify-content-between align-items-center">
-                <h4 class="mb-0 fw-bold">Détail des commandes</h4>
+                <h4 class="mb-0 fw-bold">Détail des commandes acceptées</h4>
                 
                 <div class="d-flex align-items-center gap-2">
                     <label class="small text-muted fw-semibold">Filtrer par date :</label>

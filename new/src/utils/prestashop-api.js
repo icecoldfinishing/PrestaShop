@@ -39,6 +39,7 @@ export async function psGet(resource, id = '', queryParams = {}) {
     params: {
       ws_key: API_KEY,
       output_format: 'XML',
+      t: Date.now(),
       ...queryParams,
     },
     headers: {

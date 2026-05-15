@@ -6,6 +6,8 @@ import {
 import {
     psGetStockAvailables,
     psUpdateStockAvailable,
+    psUpdateStockQuantity,
+    psGetStockMovements,
     psGetStockMovementsFromOrders,
 } from '../../../utils/stocks/stock-api';
 import {
@@ -137,11 +139,14 @@ const updateQuantity = async (product, amount) => {
     const newQty = Math.max(0, currentQty + amount);
 
     try {
-        await psUpdateStockAvailable(stockId, newQty);
-        // Update local state
+        const result = await psUpdateStockQuantity(product.id, product.id_product_attribute, amount);
+        
+        // Update local state with the REAL quantity from server
+        const realNewQty = result.new_quantity ?? Math.max(0, currentQty + amount);
+        
         const stockEntry = stocks.value.find(s => s.id === stockId);
         if (stockEntry) {
-            stockEntry.quantity = newQty;
+            stockEntry.quantity = realNewQty;
         }
 
         // Add to cache
@@ -176,12 +181,16 @@ const viewEvolution = async (product) => {
     stockMovements.value = [];
 
     try {
-        const orderMvts = await psGetStockMovementsFromOrders(product.id, product.id_product_attribute);
+        const [orderMvts, realMvts] = await Promise.all([
+            psGetStockMovementsFromOrders(product.id, product.id_product_attribute),
+            psGetStockMovements(product.id, product.id_product_attribute)
+        ]);
+        
         const cacheKey = `${product.id}-${product.id_product_attribute}`;
         const manualMvts = mockMovementsCache[cacheKey] || [];
 
-        // Combine real orders and manual adjustments
-        const allMvts = [...orderMvts, ...manualMvts].sort((a, b) => new Date(b.date) - new Date(a.date));
+        // Combine all sources
+        const allMvts = [...realMvts, ...orderMvts, ...manualMvts].sort((a, b) => new Date(b.date) - new Date(a.date));
 
         // Calculate rolling quantity backwards from current stock
         let rollingQty = product.quantity;
