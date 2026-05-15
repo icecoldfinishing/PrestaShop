@@ -1223,7 +1223,7 @@ export async function psUpdateStockAvailable(stockId, newQuantity) {
 /**
  * Récupère les mouvements de stock réels d'un produit basés sur les commandes acceptées
  */
-export async function psGetStockMovementsFromOrders(productId) {
+export async function psGetStockMovementsFromOrders(productId, productAttributeId = '0') {
   try {
     const data = await psGet('orders', '', { display: 'full' });
     const raw = data?.prestashop?.orders?.order;
@@ -1239,7 +1239,10 @@ export async function psGetStockMovementsFromOrders(productId) {
       
       const rows = [].concat(o.associations?.order_rows?.order_row || []);
       for (const row of rows) {
-        if (cleanId(row.product_id) === String(productId)) {
+        const rowProductId = cleanId(row.product_id);
+        const rowAttrId = cleanId(row.product_attribute_id) || '0';
+
+        if (rowProductId === String(productId) && rowAttrId === String(productAttributeId)) {
           movements.push({
             id: `order-${cleanId(o.id)}`,
             change: -Math.max(1, parseInt(getXmlText(row.product_quantity), 10) || 1),
