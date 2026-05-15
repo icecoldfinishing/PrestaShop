@@ -1168,3 +1168,73 @@ export async function psUpdateCart(cartId, customerId, items, addressId) {
   // On utilise psPut sur la ressource carts/{id}
   return psPut(`carts/${cartId}`, xml);
 }
+
+/**
+ * ==========================================
+ * STOCK MANAGEMENT
+ * ==========================================
+ */
+
+/**
+ * Récupère tous les stocks disponibles
+ */
+export async function psGetStockAvailables() {
+  const data = await psGet('stock_availables', '', { display: 'full' });
+  const raw = data?.prestashop?.stock_availables?.stock_available;
+  if (!raw) return [];
+  return Array.isArray(raw) ? raw : [raw];
+}
+
+/**
+ * Récupère un stock disponible spécifique
+ */
+export async function psGetStockAvailable(stockId) {
+  const data = await psGet('stock_availables', stockId);
+  return data?.prestashop?.stock_available;
+}
+
+/**
+ * Met à jour la quantité d'un stock
+ */
+export async function psUpdateStockAvailable(stockId, newQuantity) {
+  // 1. Get the current stock data
+  const currentStock = await psGetStockAvailable(stockId);
+  if (!currentStock) throw new Error(`Stock #${stockId} not found`);
+
+  // 2. Build the XML manually to avoid fast-xml-parser artifacts with xlink:href
+  const xmlData = `<?xml version="1.0" encoding="UTF-8"?>
+<prestashop xmlns:xlink="http://www.w3.org/1999/xlink">
+  <stock_available>
+    <id>${stockId}</id>
+    <id_product>${getXmlText(currentStock.id_product)}</id_product>
+    <id_product_attribute>${getXmlText(currentStock.id_product_attribute)}</id_product_attribute>
+    <id_shop>${getXmlText(currentStock.id_shop)}</id_shop>
+    <id_shop_group>${getXmlText(currentStock.id_shop_group)}</id_shop_group>
+    <quantity>${newQuantity}</quantity>
+    <depends_on_stock>${getXmlText(currentStock.depends_on_stock)}</depends_on_stock>
+    <out_of_stock>${getXmlText(currentStock.out_of_stock)}</out_of_stock>
+    <location><![CDATA[${getXmlText(currentStock.location)}]]></location>
+  </stock_available>
+</prestashop>`;
+
+  return psPut(`stock_availables/${stockId}`, xmlData);
+}
+
+/**
+ * Récupère les mouvements de stock d'un produit (pour l'évolution journalière)
+ */
+export async function psGetStockMovements(productId = null) {
+  const params = { display: 'full' };
+  if (productId) {
+    params['filter[id_product]'] = `[${productId}]`;
+  }
+  try {
+    const data = await psGet('stock_movements', '', params);
+    const raw = data?.prestashop?.stock_mvts?.stock_mvt || data?.prestashop?.stock_movements?.stock_movement;
+    if (!raw) return [];
+    return Array.isArray(raw) ? raw : [raw];
+  } catch (error) {
+    console.error("Error fetching stock movements (maybe advanced stock is disabled):", error);
+    return [];
+  }
+}

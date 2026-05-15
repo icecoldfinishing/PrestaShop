@@ -17,6 +17,7 @@ import FoOrders from "./components/FO/order/OrderList.vue";
 
 
 import OrderList from "./components/BO/order/OrderList.vue";
+import StockManager from "./components/BO/stock/StockManager.vue";
 import DataResetManager from "./components/BO/reset/DataResetManager.vue";
 
 import { loggedCustomer, logout, loggedAdmin, adminLogout, enterFoGuest } from "./utils/auth-state";
@@ -40,7 +41,7 @@ const PAGE = {
 
   BO_HOME: "home",
   BO_PRODUCTS: "products-list",
-
+  BO_STOCKS: "stocks-list",
 
   BO_ORDERS: "orders-list",
   BO_AUTH: "auth",
@@ -237,6 +238,8 @@ const switchMode = (newMode) => {
 
           <a class="nav-link text-white" :class="{ 'bg-primary': currentPage === PAGE.BO_PRODUCTS }"
             @click="currentPage = PAGE.BO_PRODUCTS">Products</a>
+          <a class="nav-link text-white" :class="{ 'bg-primary': currentPage === PAGE.BO_STOCKS }"
+            @click="currentPage = PAGE.BO_STOCKS">Stocks</a>
           <a class="nav-link text-white" :class="{ 'bg-primary': currentPage === PAGE.BO_ORDERS }"
             @click="currentPage = PAGE.BO_ORDERS">Orders</a>
         </div>
@@ -284,6 +287,8 @@ const switchMode = (newMode) => {
         <Home v-if="mode === 'BO' && currentPage === PAGE.BO_HOME" @navigate="handleHomeNavigate" />
 
         <ProductList v-if="mode === 'BO' && currentPage === PAGE.BO_PRODUCTS" @edit="openEditProduct" />
+
+        <StockManager v-if="mode === 'BO' && currentPage === PAGE.BO_STOCKS" />
 
         <OrderList v-if="mode === 'BO' && currentPage === PAGE.BO_ORDERS" />
 
