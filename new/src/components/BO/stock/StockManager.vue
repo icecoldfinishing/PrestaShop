@@ -1,14 +1,18 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue';
 import {
-    psGet,
+    psGet
+} from '../../../utils/prestashop-api';
+import {
     psGetStockAvailables,
     psUpdateStockAvailable,
     psGetStockMovementsFromOrders,
+} from '../../../utils/stocks/stock-api';
+import {
     cleanId,
     getXmlText,
     extractText
-} from '../../../utils/prestashop-api';
+} from '../../../utils/products/product-api';
 
 const products = ref([]);
 const stocks = ref([]);

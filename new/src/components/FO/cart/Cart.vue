@@ -1,16 +1,16 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
+import { psGet } from '../../../utils/prestashop-api';
 import {
     cart,
     psCreateCart,
     psCreateOrder,
     psEnsureCustomerAddress,
     psGetCartSecureKey,
-    psGet,
     getXmlText,
     cleanId,
-} from '../../../utils/prestashop-api';
-import { loggedCustomer } from '../../../utils/auth-state';
+} from '../../../utils/products/product-api';
+import { loggedCustomer } from '../../../utils/auth/auth-state';
 
 const emit = defineEmits(['continueShopping', 'orderSuccess']);
 

@@ -1,7 +1,7 @@
 <script setup>
 import { ref, watch } from 'vue';
-import { psLoginCustomer } from '../../../utils/prestashop-api';
-import { setLoggedCustomer } from '../../../utils/auth-state';
+import { psLoginCustomer } from '../../../utils/auth/auth-api';
+import { setLoggedCustomer } from '../../../utils/auth/auth-state';
 
 const props = defineProps({
     /** Email prérempli après choix sur l’écran utilisateurs */

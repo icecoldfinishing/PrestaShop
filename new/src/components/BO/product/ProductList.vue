@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
-import { getXmlText, psGet } from '../../../utils/prestashop-api';
-import { isLoggedIn } from '../../../utils/auth-state';
+import {  psGet } from '../../../utils/prestashop-api';
+import { getXmlText } from '../../../utils/products/product-api';
+import { isLoggedIn } from '../../../utils/auth/auth-state';
 
 const products = ref<any[]>([]);
 const loading = ref(false);

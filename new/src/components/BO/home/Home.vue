@@ -1,6 +1,7 @@
 <script setup>
 import { ref, onMounted } from 'vue';
-import { psCount, psGetOrdersDashboardStats } from '../../../utils/prestashop-api';
+import { psCount } from '../../../utils/prestashop-api';
+import {  psGetOrdersDashboardStats } from '../../../utils/products/product-api';
 
 const emit = defineEmits(['navigate']);
 

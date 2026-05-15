@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
-import { psGet, getXmlText } from '../../../utils/prestashop-api';
-import { loggedCustomer } from '../../../utils/auth-state';
+import { psGet } from '../../../utils/prestashop-api';
+import { getXmlText } from '../../../utils/products/product-api';
+import { loggedCustomer } from '../../../utils/auth/auth-state';
 
 type OrderRow = {
   id: string;

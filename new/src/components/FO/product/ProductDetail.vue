@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, watch, reactive } from 'vue';
-import { extractText, psGetProductFullDetails, psGetProductTaxMultiplier, cart, psGet, cleanId, getXmlText } from '../../../utils/prestashop-api';
+import { psGet } from '../../../utils/prestashop-api';
+import { extractText, psGetProductFullDetails, psGetProductTaxMultiplier, cart, cleanId , getXmlText } from '../../../utils/products/product-api';
 
 type ProductDetail = {
     id: number;

@@ -20,8 +20,8 @@ import OrderList from "./components/BO/order/OrderList.vue";
 import StockManager from "./components/BO/stock/StockManager.vue";
 import DataResetManager from "./components/BO/reset/DataResetManager.vue";
 
-import { loggedCustomer, logout, loggedAdmin, adminLogout, enterFoGuest } from "./utils/auth-state";
-import { cart } from "./utils/prestashop-api";
+import { loggedCustomer, logout, loggedAdmin, adminLogout, enterFoGuest } from "./utils/auth/auth-state";
+import { cart } from "./utils/products/product-api";
 
 import "bootstrap/dist/css/bootstrap.min.css";
 import "bootstrap/dist/js/bootstrap.bundle.min.js";

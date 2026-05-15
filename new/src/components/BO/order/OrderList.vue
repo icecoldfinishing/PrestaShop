@@ -1,7 +1,8 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue';
 import axios from 'axios';
-import { getXmlText, psGet, psUpdateOrderState, psEnsureCustomerAddress, psGetCartSecureKey, psCreateOrder, psLoadCartItems } from '../../../utils/prestashop-api';
+import {  psGet } from '../../../utils/prestashop-api';
+import { getXmlText, psUpdateOrderState, psEnsureCustomerAddress, psGetCartSecureKey, psCreateOrder, psLoadCartItems } from '../../../utils/products/product-api';
 
 /* ─────────────────────────────────────────
    LOG VISIBLE dans l'UI (20 derniers msgs)

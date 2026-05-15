@@ -1,13 +1,15 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue';
 import {
-    getXmlText,
     psGet,
-    PS_PUBLIC_ORIGIN,
+    PS_PUBLIC_ORIGIN
+} from '../../../utils/prestashop-api';
+import {
+    getXmlText,
     psGetCategoriesBrief,
     foProductBadgeFromAvailability,
     psGetProductTaxMultiplier,
-} from '../../../utils/prestashop-api';
+} from '../../../utils/products/product-api';
 
 type ProductBadge = 'HOT' | 'NEW' | null;
 

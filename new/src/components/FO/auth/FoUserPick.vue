@@ -1,7 +1,7 @@
 <script setup>
 import { ref, onMounted } from 'vue';
-import { psGetActiveCustomersBrief , psLoginCustomerWithoutPassword } from '../../../utils/prestashop-api';
-import { setLoggedCustomer } from '../../../utils/auth-state';
+import { psGetActiveCustomersBrief , psLoginCustomerWithoutPassword } from '../../../utils/auth/auth-api';
+import { setLoggedCustomer } from '../../../utils/auth/auth-state';
 
 
 const emit = defineEmits(['choose-login', 'guest']);
