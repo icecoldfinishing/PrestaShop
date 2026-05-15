@@ -1,13 +1,13 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue';
-import { 
-    psGet, 
-    psGetStockAvailables, 
-    psUpdateStockAvailable, 
-    psGetStockMovementsFromOrders, 
-    cleanId, 
-    getXmlText, 
-    extractText 
+import {
+    psGet,
+    psGetStockAvailables,
+    psUpdateStockAvailable,
+    psGetStockMovementsFromOrders,
+    cleanId,
+    getXmlText,
+    extractText
 } from '../../../utils/prestashop-api';
 
 const products = ref([]);
@@ -34,17 +34,17 @@ const loadData = async () => {
             psGet('combinations', '', { display: 'full' }),
             psGet('product_option_values', '', { display: 'full' })
         ]);
-        
+
         const rawProducts = prodData?.prestashop?.products?.product || [];
         const productList = Array.isArray(rawProducts) ? rawProducts : [rawProducts];
-        
+
         products.value = productList.map(p => ({
             id: cleanId(p.id),
             name: extractText(p.name),
             reference: getXmlText(p.reference),
             price: parseFloat(getXmlText(p.price) || '0').toFixed(2)
         }));
-        
+
         stocks.value = stockData.map(s => ({
             id: cleanId(s.id),
             id_product: cleanId(s.id_product),
@@ -75,18 +75,26 @@ const loadData = async () => {
 
 const productStocks = computed(() => {
     const list = [];
-    
+
     products.value.forEach(p => {
-        const pStocks = stocks.value.filter(s => s.id_product === p.id);
-        
-        // On récupère les déclinaisons réelles
-        const variationStocks = pStocks.filter(s => s.id_product_attribute !== '0');
-        
-        if (variationStocks.length > 0) {
-            variationStocks.forEach(s => {
-                const combo = combinations.value.find(c => c.id === s.id_product_attribute);
-                const variationName = combo?.option_values.map(vId => optionValues.value[vId]).join(', ') || 'Déclinaison';
-                
+        // Vérifie si ce produit a de vraies combinaisons déclarées
+        const productCombinations = combinations.value.filter(c => c.id_product === p.id);
+
+        if (productCombinations.length > 0) {
+            // ── Produit avec déclinaisons ──
+            // On affiche uniquement les stocks liés à une déclinaison (attr ≠ '0')
+            productCombinations.forEach(combo => {
+                const s = stocks.value.find(
+                    s => s.id_product === p.id && s.id_product_attribute === combo.id
+                );
+                if (!s) return; // pas de stock pour cette combo, on skip
+
+                const variationName =
+                    combo.option_values
+                        .map(vId => optionValues.value[vId])
+                        .filter(Boolean)
+                        .join(', ') || 'Déclinaison';
+
                 list.push({
                     ...p,
                     displayName: `${p.name} - ${variationName}`,
@@ -96,31 +104,34 @@ const productStocks = computed(() => {
                 });
             });
         } else {
-            // Produit standard
-            const mainStock = pStocks.find(s => s.id_product_attribute === '0');
-            if (mainStock) {
-                list.push({
-                    ...p,
-                    displayName: p.name,
-                    stockId: mainStock.id,
-                    quantity: mainStock.quantity,
-                    id_product_attribute: '0'
-                });
-            }
+            // ── Produit simple (sans déclinaisons) ──
+            const mainStock = stocks.value.find(
+                s => s.id_product === p.id &&
+                    (s.id_product_attribute === '0' || s.id_product_attribute === '')
+            );
+            if (!mainStock) return;
+
+            list.push({
+                ...p,
+                displayName: p.name,
+                stockId: mainStock.id,
+                quantity: mainStock.quantity,
+                id_product_attribute: '0'
+            });
         }
     });
-    
+
     return list;
 });
 
 const updateQuantity = async (product, amount) => {
     const stockId = product.stockId;
     if (!stockId) return;
-    
+
     updatingId.value = stockId;
     const currentQty = product.quantity;
-    const newQty = Math.max(0, currentQty + amount); 
-    
+    const newQty = Math.max(0, currentQty + amount);
+
     try {
         await psUpdateStockAvailable(stockId, newQty);
         // Update local state
@@ -133,7 +144,7 @@ const updateQuantity = async (product, amount) => {
         const productId = product.id;
         const attrId = product.id_product_attribute;
         const cacheKey = `${productId}-${attrId}`;
-        
+
         if (!mockMovementsCache[cacheKey]) {
             mockMovementsCache[cacheKey] = [];
         }
@@ -145,7 +156,7 @@ const updateQuantity = async (product, amount) => {
             date: new Date().toISOString().replace('T', ' ').slice(0, 19),
             reason: 'Ajustement manuel'
         });
-        
+
     } catch (err) {
         console.error("Error updating stock:", err);
         alert("Erreur lors de la mise à jour du stock.");
@@ -159,18 +170,18 @@ const viewEvolution = async (product) => {
     showEvolutionModal.value = true;
     evolutionLoading.value = true;
     stockMovements.value = [];
-    
+
     try {
         const orderMvts = await psGetStockMovementsFromOrders(product.id, product.id_product_attribute);
         const cacheKey = `${product.id}-${product.id_product_attribute}`;
         const manualMvts = mockMovementsCache[cacheKey] || [];
-        
+
         // Combine real orders and manual adjustments
         const allMvts = [...orderMvts, ...manualMvts].sort((a, b) => new Date(b.date) - new Date(a.date));
-        
+
         // Calculate rolling quantity backwards from current stock
         let rollingQty = product.quantity;
-        
+
         const finalMvts = allMvts.map(m => {
             const calculatedQty = rollingQty;
             rollingQty = rollingQty - m.change; // reverse the operation
@@ -189,9 +200,9 @@ const viewEvolution = async (product) => {
             date: 'Initial',
             reason: 'Insertion de base'
         });
-        
+
         stockMovements.value = finalMvts;
-        
+
     } catch (err) {
         console.error("Error loading stock movements:", err);
     } finally {
@@ -212,13 +223,13 @@ onMounted(() => {
 <template>
     <div class="container py-4">
         <h2 class="fw-bold mb-3">Gestion des Stocks</h2>
-        
+
         <div v-if="loading" class="text-center py-5">
             <div class="spinner-border text-primary" role="status">
                 <span class="visually-hidden">Chargement...</span>
             </div>
         </div>
-        
+
         <div v-else class="card border-0 shadow-sm">
             <div class="card-body p-0">
                 <div class="table-responsive">
@@ -244,27 +255,26 @@ onMounted(() => {
                                 <td class="fw-bold">{{ product.displayName }}</td>
                                 <td>{{ product.reference || '-' }}</td>
                                 <td class="text-center">
-                                    <span class="badge" :class="product.quantity > 5 ? 'bg-success' : (product.quantity > 0 ? 'bg-warning' : 'bg-danger')">
+                                    <span class="badge"
+                                        :class="product.quantity > 5 ? 'bg-success' : (product.quantity > 0 ? 'bg-warning' : 'bg-danger')">
                                         {{ product.quantity }}
                                     </span>
                                 </td>
                                 <td class="text-center">
                                     <div class="d-inline-flex align-items-center bg-light rounded p-1 border">
-                                        <button 
-                                            class="btn btn-sm btn-outline-secondary border-0" 
+                                        <button class="btn btn-sm btn-outline-secondary border-0"
                                             @click="updateQuantity(product, -1)"
-                                            :disabled="updatingId === product.stockId || product.quantity <= 0"
-                                        >
-                                            <span v-if="updatingId === product.stockId" class="spinner-border spinner-border-sm"></span>
+                                            :disabled="updatingId === product.stockId || product.quantity <= 0">
+                                            <span v-if="updatingId === product.stockId"
+                                                class="spinner-border spinner-border-sm"></span>
                                             <span v-else>➖</span>
                                         </button>
                                         <span class="mx-3 fw-bold">{{ product.quantity }}</span>
-                                        <button 
-                                            class="btn btn-sm btn-outline-secondary border-0" 
+                                        <button class="btn btn-sm btn-outline-secondary border-0"
                                             @click="updateQuantity(product, 1)"
-                                            :disabled="updatingId === product.stockId"
-                                        >
-                                            <span v-if="updatingId === product.stockId" class="spinner-border spinner-border-sm"></span>
+                                            :disabled="updatingId === product.stockId">
+                                            <span v-if="updatingId === product.stockId"
+                                                class="spinner-border spinner-border-sm"></span>
                                             <span v-else>➕</span>
                                         </button>
                                     </div>
@@ -298,9 +308,10 @@ onMounted(() => {
                         </div>
                         <div v-else>
                             <p class="text-muted mb-4">
-                                Historique des mouvements de stock journaliers pour le produit <strong>{{ selectedProductForEvolution?.displayName }}</strong>.
+                                Historique des mouvements de stock journaliers pour le produit <strong>{{
+                                    selectedProductForEvolution?.displayName }}</strong>.
                             </p>
-                            
+
                             <div class="table-responsive border rounded">
                                 <table class="table table-striped table-hover mb-0">
                                     <thead class="table-light">
@@ -318,15 +329,21 @@ onMounted(() => {
                                             </td>
                                         </tr>
                                         <tr v-for="mvt in stockMovements" :key="mvt.id">
-                                            <td>{{ new Date(mvt.date).toLocaleDateString('fr-FR', { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute:'2-digit' }) }}</td>
+                                            <td>{{ new Date(mvt.date).toLocaleDateString('fr-FR', {
+                                                weekday: 'short',
+                                                year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit',
+                                                minute:'2-digit' }) }}</td>
                                             <td>{{ mvt.reason || 'Non spécifié' }}</td>
                                             <td class="text-center">
-                                                <span class="badge" :class="mvt.sign === 1 || mvt.change > 0 ? 'bg-success' : 'bg-danger'">
-                                                    {{ mvt.sign === 1 || mvt.change > 0 ? '+' : '' }}{{ mvt.change !== undefined ? mvt.change : mvt.quantity }}
+                                                <span class="badge"
+                                                    :class="mvt.sign === 1 || mvt.change > 0 ? 'bg-success' : 'bg-danger'">
+                                                    {{ mvt.sign === 1 || mvt.change > 0 ? '+' : '' }}{{ mvt.change !==
+                                                    undefined ? mvt.change : mvt.quantity }}
                                                 </span>
                                             </td>
                                             <td class="text-end pe-3 fw-bold">
-                                                {{ mvt.quantity !== undefined && mvt.change !== undefined ? mvt.quantity : '-' }}
+                                                {{ mvt.quantity !== undefined && mvt.change !== undefined ? mvt.quantity
+                                                : '-' }}
                                             </td>
                                         </tr>
                                     </tbody>

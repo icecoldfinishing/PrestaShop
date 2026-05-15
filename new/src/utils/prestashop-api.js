@@ -649,9 +649,9 @@ export async function psEnsureCustomerAddress(customer, defaults = {}) {
 
 // Nettoie les IDs (gère les objets { #text: id })
 export const cleanId = (idField) => {
-  if (!idField) return '';
+  if (idField === null || idField === undefined || idField === '') return '';
   if (typeof idField === 'object') {
-    return String(idField['#text'] || idField['@_id'] || '').trim();
+    return String(idField['#text'] ?? idField['@_id'] ?? '').trim();
   }
   return String(idField).trim();
 };
@@ -1259,4 +1259,4 @@ export async function psGetStockMovementsFromOrders(productId, productAttributeI
     console.error("Error fetching orders for stock evolution:", error);
     return [];
   }
-}
+}
