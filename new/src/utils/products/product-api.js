@@ -35,6 +35,7 @@ const COD_STATE_ID = 10;
 export async function psGetOrdersLight() {
   const data = await psGet('orders', '', {
     display: '[id,total_paid,date_add,current_state,id_customer]',
+    'filter[current_state]': '[2]',
     sort: '[id_DESC]'
   });
   const raw = data?.prestashop?.orders?.order;
