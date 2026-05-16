@@ -14,7 +14,9 @@ const load = async () => {
     loading.value = true;
     errorMsg.value = '';
     try {
-        customers.value = await psGetActiveCustomersBrief();
+        const all = await psGetActiveCustomersBrief();
+        customers.value = all.filter(c => c.firstname !== 'anonym');
+        anonymUser.value = all.find(c => c.firstname === 'anonym');
     } catch (e) {
         console.error(e);
         errorMsg.value = 'Impossible de charger les utilisateurs.';
@@ -23,6 +25,8 @@ const load = async () => {
         loading.value = false;
     }
 };
+
+const anonymUser = ref(null);
 
 const loginWithoutPassword = async (email) => {
     try {
@@ -77,16 +81,17 @@ onMounted(load);
             </div>
 
             <button
+                v-if="anonymUser"
                 type="button"
                 class="btn btn-outline-secondary w-100 py-3 rounded-3 mb-2"
-                @click="goGuest"
+                @click="loginWithoutPassword(anonymUser.email)"
             >
                 <i class="bi bi-person-slash me-2" />
-                Utilisateur anonyme (navigation sans compte)
+                Utilisateur anonyme (Compte client anonyme)
             </button>
 
             <p class="small text-muted text-center mb-0">
-                En mode invité, le panier local fonctionne ; la validation de commande nécessite un compte client.
+                L'utilisateur anonyme permet de passer commande avec un compte partagé.
             </p>
         </div>
     </div>

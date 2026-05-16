@@ -307,16 +307,16 @@ const switchMode = (newMode) => {
           @success="handleFoLogin" @back="backToFoUserPick" />
 
         <!-- ================= FO BARRE SESSION ================= -->
-        <div
-          v-if="mode === 'FO' && loggedCustomer && currentPage !== PAGE.FO_USER_PICK && currentPage !== PAGE.FO_LOGIN"
-          class="alert d-flex justify-content-between border"
-          :class="loggedCustomer?.guest ? 'bg-light text-muted' : 'bg-body-secondary text-dark'">
-          <div>
-            <template v-if="loggedCustomer?.guest">
-              <b>Mode invité</b> — navigation sans compte client
-            </template>
+          <div
+            v-if="mode === 'FO' && loggedCustomer && currentPage !== PAGE.FO_USER_PICK && currentPage !== PAGE.FO_LOGIN"
+            class="alert d-flex justify-content-between border"
+            :class="(loggedCustomer?.guest || loggedCustomer?.firstname === 'anonym') ? 'bg-light text-muted' : 'bg-body-secondary text-dark'">
+            <div>
+              <template v-if="loggedCustomer?.guest || loggedCustomer?.firstname === 'anonym'">
+                <b>Mode invité</b> — navigation avec compte anonyme
+              </template>
             <template v-else>
-              Connecté : <b>{{ loggedCustomer.firstname }} {{ loggedCustomer.lastname }}</b>
+              Connecté : <b>{{ loggedCustomer.firstname === 'anonym' ? 'anonym' : (loggedCustomer.firstname + ' ' + loggedCustomer.lastname) }}</b>
             </template>
           </div>
 

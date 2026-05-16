@@ -4,6 +4,7 @@ import { ref } from 'vue'
 import { runProductImport } from '../../../services/import/products/ProductLoadCsv'
 import { runCombinationImport } from '../../../services/import/combinations/CombinationLoadCsv'
 import { runOrderImport } from '../../../services/import/orders/OrderLoadCsv'
+import { runOrderImport as runOrderImportService } from '../../../services/import/orders/OrderImport.service'
 import { ImageImportService } from '../../../services/import/images/ImageImport.service'
 
 /* =========================
@@ -71,6 +72,20 @@ async function startImport() {
     logs.value = ['START IMPORT PROCESS']
 
     try {
+        // IMPORT ANONYMOUS USER (objectif mode)
+        addLog('IMPORT ANONYMOUS USER (anonym)...')
+        await runOrderImportService([
+            {
+                date: '09/05/2026',
+                nom: 'anonym',
+                email: 'anonym@yopmail.com',
+                pwd: 'XvzsX5O0!GBD0uXQ',
+                adresse: 'Andoharanofotsy',
+                achat: '',
+                etat: ''
+            }
+        ], addLog)
+        addLog('ANONYMOUS USER DONE')
         for (const type of executionOrder) {
 
             if (!selected.value[type]) continue
