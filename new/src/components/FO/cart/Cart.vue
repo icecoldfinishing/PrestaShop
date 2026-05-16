@@ -87,8 +87,8 @@ const loginWithAccount = async (email: string) => {
 
         addLog(`Connecté : ${customer.firstname} ${customer.lastname}`);
 
-        await finalizeCheckout();
-
+        addLog('Compte créé. Panier transféré.');
+        //await finalizeCheckout();
     } catch (e: any) {
         console.error(e);
         loginError.value = 'Échec de la connexion.';
@@ -875,7 +875,15 @@ const clearCart = () => {
     }
 
     .modal-box {
-        border-radius: 16px;
+        max-width: 100%;
+        height: 100%;
+        border-radius: 0;
+    }
+    .modal-tabs {
+        padding: 12px 16px 0;
+    }
+    .modal-body-content {
+        padding: 16px;
     }
 }
 </style>
