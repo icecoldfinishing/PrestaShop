@@ -18,7 +18,7 @@ import OrderList from "./components/BO/order/OrderList.vue";
 import StockManager from "./components/BO/stock/StockManager.vue";
 import DataResetManager from "./components/BO/reset/DataResetManager.vue";
 
-import { loggedCustomer, logout, loggedAdmin, adminLogout, enterFoGuest } from "./utils/auth/auth-state";
+import { loggedCustomer, logout, loggedAdmin, adminLogout } from "./utils/auth/auth-state";
 import { cart } from "./utils/products/product-api";
 
 import "bootstrap/dist/css/bootstrap.min.css";
@@ -48,7 +48,7 @@ const PAGE = {
   BO_RESET: "data-reset",
 };
 
-const currentPage = ref(PAGE.FO_USER_PICK);
+const currentPage = ref(PAGE.FO_HOME);
 const loginPrefillEmail = ref("");
 const foOrdersCount = ref(0);
 
@@ -111,10 +111,7 @@ const closeFoProduct = () => {
 };
 
 const goToCart = () => {
-  if (!loggedCustomer.value) {
-    currentPage.value = PAGE.FO_USER_PICK;
-    return;
-  }
+  // Panier accessible anonymement — l'auth sera demandée uniquement au checkout
   currentPage.value = PAGE.FO_CART;
 };
 
@@ -132,10 +129,7 @@ const goToFoOrders = () => {
 };
 
 const goToHomeFO = () => {
-  if (!loggedCustomer.value) {
-    currentPage.value = PAGE.FO_USER_PICK;
-    return;
-  }
+  // Accueil accessible à tous, connecté ou non
   currentPage.value = PAGE.FO_HOME;
 };
 
@@ -154,8 +148,9 @@ const handleFoLogin = () => {
   currentPage.value = PAGE.FO_HOME;
 };
 
-const handleFoGuest = () => {
-  enterFoGuest();
+// Navigation anonyme : aucune session créée, loggedCustomer reste null
+const handleBrowseAnonymous = () => {
+  // Pas de setLoggedCustomer — l'utilisateur navigue sans compte
   cart.setOwner(null);
   foOrdersCount.value = 0;
   loginPrefillEmail.value = "";
@@ -197,7 +192,8 @@ const switchMode = (newMode) => {
   mode.value = newMode;
 
   if (newMode === "FO") {
-    currentPage.value = loggedCustomer.value ? PAGE.FO_HOME : PAGE.FO_USER_PICK;
+    // Toujours aller à la boutique, connecté ou non
+    currentPage.value = PAGE.FO_HOME;
   }
 
   if (newMode === "BO") {
@@ -300,38 +296,53 @@ const switchMode = (newMode) => {
 
         <!-- ================= FO CHOIX UTILISATEUR ================= -->
         <FoUserPick v-if="mode === 'FO' && currentPage === PAGE.FO_USER_PICK" @choose-login="onChooseFoLogin"
-          @guest="handleFoGuest" />
+          @browse-anonymous="handleBrowseAnonymous" />
 
         <!-- ================= FO LOGIN ================= -->
         <CustomerLogin v-if="mode === 'FO' && currentPage === PAGE.FO_LOGIN" :prefill-email="loginPrefillEmail"
           @success="handleFoLogin" @back="backToFoUserPick" />
 
         <!-- ================= FO BARRE SESSION ================= -->
+          <!-- Barre session : afficher si sur une page FO (hors pick/login) -->
           <div
-            v-if="mode === 'FO' && loggedCustomer && currentPage !== PAGE.FO_USER_PICK && currentPage !== PAGE.FO_LOGIN"
-            class="alert d-flex justify-content-between border"
-            :class="(loggedCustomer?.guest || loggedCustomer?.firstname === 'anonym') ? 'bg-light text-muted' : 'bg-body-secondary text-dark'">
-            <div>
-              <template v-if="loggedCustomer?.guest || loggedCustomer?.firstname === 'anonym'">
-                <b>Mode invité</b> — navigation avec compte anonyme
+            v-if="mode === 'FO' && currentPage !== PAGE.FO_USER_PICK && currentPage !== PAGE.FO_LOGIN"
+            class="alert d-flex justify-content-between align-items-center border mb-3 py-2"
+            :class="!loggedCustomer ? 'alert-warning text-dark' : 'bg-body-secondary text-dark'">
+            <div class="d-flex align-items-center gap-2">
+              <template v-if="!loggedCustomer">
+                <i class="bi bi-person-slash me-1"></i>
+                <span><b>Mode invité</b> — <span class="small">Connectez-vous pour finaliser votre commande</span></span>
               </template>
-            <template v-else>
-              Connecté : <b>{{ loggedCustomer.firstname === 'anonym' ? 'anonym' : (loggedCustomer.firstname + ' ' + loggedCustomer.lastname) }}</b>
-            </template>
+              <template v-else>
+                <i class="bi bi-person-check-fill me-1 text-success"></i>
+                Connecté : <b>{{ loggedCustomer.firstname + ' ' + loggedCustomer.lastname }}</b>
+              </template>
+            </div>
+            <div class="d-flex gap-2">
+              <button v-if="!loggedCustomer" class="btn btn-sm btn-dark" @click="currentPage = PAGE.FO_USER_PICK">
+                <i class="bi bi-box-arrow-in-right me-1"></i>Se connecter
+              </button>
+              <button v-else class="btn btn-sm btn-danger" @click="handleCustomerLogout">
+                <i class="bi bi-box-arrow-right me-1"></i>Déconnexion
+              </button>
+            </div>
           </div>
 
-          <button class="btn btn-sm btn-danger" @click="handleCustomerLogout">Déconnexion</button>
-        </div>
 
         <!-- ================= FO ================= -->
-        <HomeFO v-if="mode === 'FO' && currentPage === PAGE.FO_HOME && isCustomer" @view="openFoProduct" />
+        <!-- Navigation anonyme : FO_HOME et FO_PRODUCT_DETAIL accessibles sans compte -->
+        <HomeFO v-if="mode === 'FO' && currentPage === PAGE.FO_HOME" @view="openFoProduct" />
 
-        <ProductDetailFO v-if="mode === 'FO' && currentPage === PAGE.FO_PRODUCT_DETAIL && isCustomer"
+        <ProductDetailFO v-if="mode === 'FO' && currentPage === PAGE.FO_PRODUCT_DETAIL"
           :product-id="selectedFoProductId" @back="closeFoProduct" @go-to-cart="goToCart" />
 
-        <Cart v-if="mode === 'FO' && currentPage === PAGE.FO_CART && isCustomer" @continueShopping="goToHomeFO" />
+        <!-- Panier : accessible anonymement, checkout nécessite connexion -->
+        <Cart v-if="mode === 'FO' && currentPage === PAGE.FO_CART"
+          @continueShopping="goToHomeFO"
+          @request-login="currentPage = PAGE.FO_USER_PICK" />
 
-        <FoOrders v-if="mode === 'FO' && currentPage === PAGE.FO_ORDERS && isCustomer && !loggedCustomer?.guest" />
+        <!-- Mes commandes : réservé aux comptes connectés -->
+        <FoOrders v-if="mode === 'FO' && currentPage === PAGE.FO_ORDERS && isCustomer" />
 
         <!-- ================= BO ================= -->
         <Home v-if="mode === 'BO' && currentPage === PAGE.BO_HOME" @navigate="handleHomeNavigate" />
