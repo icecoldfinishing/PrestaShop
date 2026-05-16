@@ -96,9 +96,7 @@ export function parseOrdersCSV(
                     'nom',
                     'email',
                     'pwd',
-                    'adresse',
-                    'achat',
-                    'etat'
+                    'adresse'
                 ]
 
                 /* =========================
@@ -137,15 +135,6 @@ export function parseOrdersCSV(
                     if (!isValidDateFormat(row['date'])) {
                         addLog?.(
                             `❌ Ligne ${i + 1} : format date invalide "${row['date']}" (DD/MM/YYYY attendu)`
-                        )
-                        hasErrors = true
-                    }
-                    /* =========================
-                       ACHAT REQUIRED
-                    ========================= */
-                    if (!row['achat']) {
-                        addLog?.(
-                            `❌ Ligne ${i + 1} : achat vide`
                         )
                         hasErrors = true
                     }

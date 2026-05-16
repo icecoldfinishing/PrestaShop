@@ -850,32 +850,60 @@ export async function psCreateOrder({
  * Met à jour un panier existant dans PrestaShop.
  */
 export async function psUpdateCart(cartId, customerId, items, addressId) {
-  const cartData = {
-    prestashop: {
-      cart: {
-        id: cartId, // Requis pour le PUT
-        id_customer: customerId,
-        id_currency: DEFAULT_CURRENCY_ID,
-        id_lang: DEFAULT_LANG_ID,
-        id_shop: DEFAULT_SHOP_ID,
-        id_shop_group: DEFAULT_SHOP_GROUP_ID,
-        id_address_delivery: addressId,
-        id_address_invoice: addressId,
-        associations: {
-          cart_rows: {
-            cart_row: items.map(item => ({
-              id_product: item.id,
-              id_product_attribute: item.id_attribute || 0,
-              id_address_delivery: addressId,
-              quantity: item.quantity
-            }))
-          }
-        }
+  // 1. Récupérer le panier existant pour avoir tous les champs (secure_key, etc.)
+  const fullData = await psGet('carts', cartId);
+  const cart = fullData?.prestashop?.cart;
+
+  if (!cart) {
+    throw new Error(`Impossible de récupérer le panier #${cartId} pour mise à jour.`);
+  }
+
+  // 2. Préparer les nouvelles lignes avec des IDs propres
+  const cartRows = items.map(item => ({
+    id_product: cleanId(item.id),
+    id_product_attribute: cleanId(item.id_attribute) || 0,
+    id_address_delivery: cleanId(addressId),
+    quantity: item.quantity
+  }));
+
+  // 3. Construire l'objet à renvoyer
+  const updatedCart = {
+    ...cart,
+    id_customer: cleanId(customerId),
+    id_address_delivery: cleanId(addressId),
+    id_address_invoice: cleanId(addressId),
+    associations: {
+      ...(cart.associations || {}),
+      cart_rows: {
+        cart_row: cartRows
       }
     }
   };
 
+  // Nettoyage crucial pour PrestaShop PUT :
+  // Supprimer les attributs xlink et forcer les types simples
+  const cleanForBuild = (obj) => {
+    if (obj === null || obj === undefined) return obj;
+    if (Array.isArray(obj)) return obj.map(cleanForBuild);
+    if (typeof obj === 'object') {
+      const newObj = {};
+      for (const key in obj) {
+        if (key.startsWith('@_xlink:')) continue;
+        // Si c'est un champ ID ou valeur simple, on s'assure qu'il est "plat"
+        newObj[key] = cleanForBuild(obj[key]);
+      }
+      return newObj;
+    }
+    return obj;
+  };
+
+  const cartData = {
+    prestashop: {
+      cart: cleanForBuild(updatedCart)
+    }
+  };
+
   const xml = builder.build(cartData);
-  // On utilise psPut sur la ressource carts/{id}
+  console.log(`PUT Cart #${cartId} XML Preview:`, xml.substring(0, 500));
   return psPut(`carts/${cartId}`, xml);
 }

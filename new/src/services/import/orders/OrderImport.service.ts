@@ -1,5 +1,5 @@
-import type { CsvOrder, ImportResult } from "./OrderImport";
-import { importOrders } from "./OrderImport";
+import { importCustomersOnly, type CsvOrder, type ImportResult } from "./OrderImport";
+import { importOrders  } from "./OrderImport";
 
 export type OrderImportInput = CsvOrder[] | string;
 
@@ -55,7 +55,12 @@ export async function runOrderImport(
 
     return importOrders(rows, (done, result) => {
         if (result.success) {
-            const info = result.orderId && result.orderId > 0 ? `order #${result.orderId}` : "cart only";
+            let info = "";
+            if (result.type === 'order') info = `order #${result.orderId}`;
+            else if (result.type === 'cart') info = "cart created/reused";
+            else if (result.type === 'customer') info = "customer created (no purchase)";
+            else info = "imported";
+            
             log(`OK [${done}/${rows.length}] ${result.email} -> ${info}`);
         } else {
             log(`KO [${done}/${rows.length}] ${result.email} -> ${result.error || "erreur"}`);

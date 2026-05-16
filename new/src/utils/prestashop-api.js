@@ -103,16 +103,35 @@ export async function psPost(resource, xmlData) {
 }
 
 export async function psPut(resource, xmlData) {
-  const response = await axios.put(`${BASE_URL}/${resource}`, xmlData, {
-    params: {
-      ws_key: API_KEY,
-    },
-    headers: {
-      'Content-Type': 'application/xml',
-    },
-    responseType: 'text',
-  });
-  return response.data;
+  try {
+    const response = await axios.put(`${BASE_URL}/${resource}`, xmlData, {
+      params: {
+        ws_key: API_KEY,
+      },
+      headers: {
+        'Content-Type': 'application/xml',
+      },
+      responseType: 'text',
+    });
+    const body = typeof response.data === 'string' ? response.data : String(response.data ?? '');
+    if (body.includes('<errors')) {
+      const msg = extractPrestaShopErrorsFromXml(body) || body.slice(0, 1200);
+      throw new Error(`PrestaShop (${resource}): ${msg}`);
+    }
+    return body;
+  } catch (e) {
+    if (typeof axios.isAxiosError === 'function' && axios.isAxiosError(e) && e.response?.data != null) {
+      const raw = e.response.data;
+      const str = typeof raw === 'string' ? raw : String(raw);
+      const psMsg = extractPrestaShopErrorsFromXml(str);
+      if (psMsg) {
+        e.message = `${e.message || 'Erreur HTTP'} — ${psMsg}`;
+      } else if (str && str.length && str.length < 2500) {
+        e.message = `${e.message || 'Erreur HTTP'} — ${str}`;
+      }
+    }
+    throw e;
+  }
 }
 
 export async function psDelete(resource, id = '', queryParams = {}) {

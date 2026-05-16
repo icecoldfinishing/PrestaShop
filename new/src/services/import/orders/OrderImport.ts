@@ -700,6 +700,11 @@ async function processRow(row: CsvOrder) {
 
   // ── Produits & Calcul du Total ─────────────────────
   const itemsRaw = parsePurchase(purchase)
+  if (!itemsRaw.length) {
+    console.log("👤 Client et adresse créés. Aucun article à importer.")
+    return { orderId: 0, type: 'customer' }
+  }
+
   const cartItems: { productId: number; qty: number; attributeId: number; price: number; name: string; reference: string }[] = []
   let totalProducts = 0
 
@@ -721,7 +726,9 @@ async function processRow(row: CsvOrder) {
     })
   }
 
-  if (!cartItems.length) throw new Error(`Panier vide pour ${email}`)
+  if (itemsRaw.length > 0 && !cartItems.length) {
+    throw new Error(`Aucun produit valide trouvé dans l'achat pour ${email}`)
+  }
 
   // ── Panier ──────────────────────────────────────────
   // Si pas d'etat: on reutilise un panier ouvert. Si etat: on cree un nouveau panier pour isoler.
@@ -753,7 +760,7 @@ async function processRow(row: CsvOrder) {
 
   if (!hasEtat) {
     console.log("🛒 Pas d'état => Fin au panier:", cartId)
-    return 0
+    return { orderId: 0, type: 'cart' }
   }
 
   /**
@@ -787,7 +794,7 @@ async function processRow(row: CsvOrder) {
 
   console.log(`✅ IMPORT RÉUSSI : Commande #${orderId} finalisée.`)
 
-  return orderId
+  return { orderId, type: 'order' }
 }
 /* =====================================================
    IMPORT LOOP
@@ -798,6 +805,7 @@ export interface ImportResult {
   email: string
   success: boolean
   orderId?: number
+  type?: 'order' | 'cart' | 'customer'
   error?: string
 }
 
@@ -813,8 +821,10 @@ export async function importOrders(
     let result: ImportResult
 
     try {
-      const orderId = await processRow(row)
-      result = { row: done + 1, email, success: true, orderId }
+      const res = await processRow(row)
+      const orderId = typeof res === 'number' ? res : (res as any).orderId
+      const type = typeof res === 'object' ? (res as any).type : (orderId > 0 ? 'order' : 'cart')
+      result = { row: done + 1, email, success: true, orderId, type }
     } catch (e: any) {
       const msg = e?.response?.data || e?.message || String(e)
       console.error(`❌ Row ${done + 1} failed [${email}]:`, msg)
