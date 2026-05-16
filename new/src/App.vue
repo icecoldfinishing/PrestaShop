@@ -48,7 +48,7 @@ const PAGE = {
   BO_RESET: "data-reset",
 };
 
-const currentPage = ref(PAGE.FO_HOME);
+const currentPage = ref(PAGE.FO_USER_PICK);
 const loginPrefillEmail = ref("");
 const foOrdersCount = ref(0);
 
@@ -193,7 +193,7 @@ const switchMode = (newMode) => {
 
   if (newMode === "FO") {
     // Toujours aller à la boutique, connecté ou non
-    currentPage.value = PAGE.FO_HOME;
+    currentPage.value = PAGE.FO_USER_PICK;
   }
 
   if (newMode === "BO") {

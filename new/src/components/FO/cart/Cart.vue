@@ -52,12 +52,45 @@ const loadCustomers = async () => {
 
 const loginWithAccount = async (email: string) => {
     try {
+        // Sauvegarder panier invité
+        const guestItems = [...cart.items];
+
+        // Login
         const customer = await psLoginCustomerWithoutPassword(email);
+
+        // Reset ancien panier
+        cart.ownerId = null;
+        cart.psCartId = null;
+
+        // Connecter client
         setLoggedCustomer(customer);
+
+        // Charger panier client
+        await cart.setOwner(customer.id);
+
+        // Réinjecter produits invités
+        for (const item of guestItems) {
+            await cart.add(
+                {
+                    id: item.id,
+                    id_attribute: item.id_attribute,
+                    name: item.name,
+                    reference: item.reference,
+                    priceTTC: item.price,
+                },
+                item.quantity,
+                item.variants || {}
+            );
+        }
+
         showCheckoutModal.value = false;
-        addLog(`Connecté en tant que ${customer.firstname} ${customer.lastname}`);
+
+        addLog(`Connecté : ${customer.firstname} ${customer.lastname}`);
+
         await finalizeCheckout();
+
     } catch (e: any) {
+        console.error(e);
         loginError.value = 'Échec de la connexion.';
     }
 };
@@ -101,10 +134,39 @@ const submitRegister = async () => {
         ], addLog);
 
         // Connexion immédiate avec le compte créé
+        const guestItems = [...cart.items];
+
         const customer = await psLoginCustomerWithoutPassword(email);
+
+        // Reset panier invité
+        cart.ownerId = null;
+        cart.psCartId = null;
+
+        // Login
         setLoggedCustomer(customer);
+
+        // Charger panier client
+        await cart.setOwner(customer.id);
+
+        // Réinjecter panier invité
+        for (const item of guestItems) {
+            await cart.add(
+                {
+                    id: item.id,
+                    id_attribute: item.id_attribute,
+                    name: item.name,
+                    reference: item.reference,
+                    priceTTC: item.price,
+                },
+                item.quantity,
+                item.variants || {}
+            );
+        }
+
         showCheckoutModal.value = false;
+
         addLog(`Compte créé et connecté : ${prenom} ${nom}`);
+
         await finalizeCheckout();
     } catch (e: any) {
         registerError.value = e?.message || 'Erreur lors de la création du compte.';
@@ -236,11 +298,7 @@ const clearCart = () => {
                 </p>
             </div>
 
-            <button
-                type="button"
-                class="btn btn-outline-dark rounded-pill px-4"
-                @click="debugLog = []"
-            >
+            <button type="button" class="btn btn-outline-dark rounded-pill px-4" @click="debugLog = []">
                 <i class="bi bi-trash3 me-2"></i>
                 Vider logs
             </button>
@@ -248,12 +306,7 @@ const clearCart = () => {
 
         <!-- LOGS -->
         <div v-if="debugLog.length" class="logs-box mb-4">
-            <div
-                v-for="(log, i) in debugLog"
-                :key="i"
-                :class="{ 'text-danger': log.includes('❌') }"
-                class="mb-1"
-            >
+            <div v-for="(log, i) in debugLog" :key="i" :class="{ 'text-danger': log.includes('❌') }" class="mb-1">
                 <code>{{ log }}</code>
             </div>
         </div>
@@ -265,11 +318,7 @@ const clearCart = () => {
             </div>
             <h3 class="fw-bold mt-3">Votre panier est vide</h3>
             <p class="text-muted">Ajoutez des produits pour commencer vos achats.</p>
-            <button
-                type="button"
-                class="btn btn-dark rounded-pill px-4 py-2 mt-2"
-                @click="emit('continueShopping')"
-            >
+            <button type="button" class="btn btn-dark rounded-pill px-4 py-2 mt-2" @click="emit('continueShopping')">
                 Continuer les achats
             </button>
         </div>
@@ -280,21 +329,13 @@ const clearCart = () => {
             <!-- LEFT -->
             <div class="col-lg-8">
                 <div class="cart-items">
-                    <div
-                        v-for="item in cart.items"
-                        :key="item.cartId"
-                        class="cart-item"
-                    >
+                    <div v-for="item in cart.items" :key="item.cartId" class="cart-item">
                         <div class="row align-items-center g-3">
                             <!-- IMAGE -->
                             <div class="col-md-2 col-4">
                                 <div class="product-image-box">
-                                    <img
-                                        v-if="item.imageUrl"
-                                        :src="item.imageUrl"
-                                        class="product-image"
-                                        @error="($event.target as HTMLImageElement).style.display='none'"
-                                    />
+                                    <img v-if="item.imageUrl" :src="item.imageUrl" class="product-image"
+                                        @error="($event.target as HTMLImageElement).style.display = 'none'" />
                                     <div v-else class="image-fallback">
                                         <i class="bi bi-image"></i>
                                     </div>
@@ -304,11 +345,8 @@ const clearCart = () => {
                             <div class="col-md-4 col-8">
                                 <h6 class="fw-bold mb-1">{{ item.name }}</h6>
                                 <small class="text-muted d-block mb-1">Ref : {{ item.reference }}</small>
-                                <small
-                                    v-for="(val, label) in item.variants"
-                                    :key="String(label)"
-                                    class="badge text-bg-light border me-1 mb-1"
-                                >
+                                <small v-for="(val, label) in item.variants" :key="String(label)"
+                                    class="badge text-bg-light border me-1 mb-1">
                                     {{ label }} : {{ val }}
                                 </small>
                             </div>
@@ -318,21 +356,12 @@ const clearCart = () => {
                             </div>
                             <!-- QUANTITY -->
                             <div class="col-md-2 col-4">
-                                <input
-                                    class="form-control qty-input"
-                                    type="number"
-                                    min="1"
-                                    :value="item.quantity"
-                                    @input="updateQuantity(item.cartId, Number(($event.target as HTMLInputElement).value))"
-                                />
+                                <input class="form-control qty-input" type="number" min="1" :value="item.quantity"
+                                    @input="updateQuantity(item.cartId, Number(($event.target as HTMLInputElement).value))" />
                             </div>
                             <!-- REMOVE -->
                             <div class="col-md-2 col-4 text-end">
-                                <button
-                                    type="button"
-                                    class="btn btn-remove"
-                                    @click="removeItem(item.cartId)"
-                                >
+                                <button type="button" class="btn btn-remove" @click="removeItem(item.cartId)">
                                     <i class="bi bi-trash3"></i>
                                 </button>
                             </div>
@@ -340,11 +369,7 @@ const clearCart = () => {
                     </div>
                 </div>
 
-                <button
-                    type="button"
-                    class="btn btn-outline-danger rounded-pill mt-3"
-                    @click="clearCart"
-                >
+                <button type="button" class="btn btn-outline-danger rounded-pill mt-3" @click="clearCart">
                     <i class="bi bi-trash me-2"></i>
                     Vider le panier
                 </button>
@@ -378,12 +403,7 @@ const clearCart = () => {
                         Vous devrez vous connecter ou créer un compte pour finaliser votre commande.
                     </div>
 
-                    <button
-                        type="button"
-                        class="btn btn-checkout w-100"
-                        :disabled="isTesting"
-                        @click="handleCheckout"
-                    >
+                    <button type="button" class="btn btn-checkout w-100" :disabled="isTesting" @click="handleCheckout">
                         <span v-if="!isTesting">
                             <i class="bi bi-credit-card me-2"></i>
                             Valider la commande
@@ -394,11 +414,8 @@ const clearCart = () => {
                         </span>
                     </button>
 
-                    <button
-                        type="button"
-                        class="btn btn-outline-secondary w-100 mt-3 rounded-pill"
-                        @click="emit('continueShopping')"
-                    >
+                    <button type="button" class="btn btn-outline-secondary w-100 mt-3 rounded-pill"
+                        @click="emit('continueShopping')">
                         Continuer les achats
                     </button>
                 </div>
@@ -424,17 +441,11 @@ const clearCart = () => {
 
                 <!-- TABS -->
                 <div class="modal-tabs">
-                    <button
-                        :class="{ active: checkoutTab === 'login' }"
-                        @click="checkoutTab = 'login'"
-                    >
+                    <button :class="{ active: checkoutTab === 'login' }" @click="checkoutTab = 'login'">
                         <i class="bi bi-person-check me-1"></i>
                         Se connecter
                     </button>
-                    <button
-                        :class="{ active: checkoutTab === 'register' }"
-                        @click="checkoutTab = 'register'"
-                    >
+                    <button :class="{ active: checkoutTab === 'register' }" @click="checkoutTab = 'register'">
                         <i class="bi bi-person-plus me-1"></i>
                         Créer un compte
                     </button>
@@ -452,12 +463,8 @@ const clearCart = () => {
                         <div v-else>
                             <p class="small text-muted mb-2">Sélectionnez votre compte :</p>
                             <div class="account-list">
-                                <button
-                                    v-for="c in customerList"
-                                    :key="c.id"
-                                    class="account-item"
-                                    @click="loginWithAccount(c.email)"
-                                >
+                                <button v-for="c in customerList" :key="c.id" class="account-item"
+                                    @click="loginWithAccount(c.email)">
                                     <div class="account-avatar">
                                         {{ (c.firstname?.[0] ?? '?').toUpperCase() }}
                                     </div>
@@ -485,61 +492,35 @@ const clearCart = () => {
                         <div class="row g-2 mb-2">
                             <div class="col-6">
                                 <label class="form-label small fw-semibold">Prénom *</label>
-                                <input
-                                    v-model="registerForm.prenom"
-                                    class="form-control form-control-sm"
-                                    placeholder="Marie"
-                                    :disabled="registerLoading"
-                                />
+                                <input v-model="registerForm.prenom" class="form-control form-control-sm"
+                                    placeholder="Marie" :disabled="registerLoading" />
                             </div>
                             <div class="col-6">
                                 <label class="form-label small fw-semibold">Nom *</label>
-                                <input
-                                    v-model="registerForm.nom"
-                                    class="form-control form-control-sm"
-                                    placeholder="Dupont"
-                                    :disabled="registerLoading"
-                                />
+                                <input v-model="registerForm.nom" class="form-control form-control-sm"
+                                    placeholder="Dupont" :disabled="registerLoading" />
                             </div>
                         </div>
 
                         <div class="mb-2">
                             <label class="form-label small fw-semibold">Email *</label>
-                            <input
-                                v-model="registerForm.email"
-                                type="email"
-                                class="form-control form-control-sm"
-                                placeholder="marie@email.com"
-                                :disabled="registerLoading"
-                            />
+                            <input v-model="registerForm.email" type="email" class="form-control form-control-sm"
+                                placeholder="marie@email.com" :disabled="registerLoading" />
                         </div>
 
                         <div class="mb-2">
                             <label class="form-label small fw-semibold">Mot de passe *</label>
-                            <input
-                                v-model="registerForm.password"
-                                type="password"
-                                class="form-control form-control-sm"
-                                placeholder="Min. 8 caractères"
-                                :disabled="registerLoading"
-                            />
+                            <input v-model="registerForm.password" type="password" class="form-control form-control-sm"
+                                placeholder="Min. 8 caractères" :disabled="registerLoading" />
                         </div>
 
                         <div class="mb-3">
                             <label class="form-label small fw-semibold">Adresse *</label>
-                            <input
-                                v-model="registerForm.adresse"
-                                class="form-control form-control-sm"
-                                placeholder="12 rue de la Paix, Paris"
-                                :disabled="registerLoading"
-                            />
+                            <input v-model="registerForm.adresse" class="form-control form-control-sm"
+                                placeholder="12 rue de la Paix, Paris" :disabled="registerLoading" />
                         </div>
 
-                        <button
-                            class="btn btn-checkout w-100"
-                            :disabled="registerLoading"
-                            @click="submitRegister"
-                        >
+                        <button class="btn btn-checkout w-100" :disabled="registerLoading" @click="submitRegister">
                             <span v-if="!registerLoading">
                                 <i class="bi bi-person-plus me-2"></i>
                                 Créer mon compte et valider
@@ -577,6 +558,7 @@ const clearCart = () => {
     max-height: 250px;
     overflow-y: auto;
 }
+
 .logs-box code {
     white-space: pre-wrap;
     word-break: break-word;
@@ -587,8 +569,9 @@ const clearCart = () => {
     background: white;
     padding: 70px 20px;
     border-radius: 24px;
-    box-shadow: 0 8px 30px rgba(0,0,0,0.06);
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.06);
 }
+
 .empty-icon {
     font-size: 5rem;
     color: #ced4da;
@@ -600,13 +583,15 @@ const clearCart = () => {
     flex-direction: column;
     gap: 20px;
 }
+
 .cart-item {
     background: white;
     border-radius: 20px;
     padding: 20px;
-    box-shadow: 0 6px 25px rgba(0,0,0,0.05);
+    box-shadow: 0 6px 25px rgba(0, 0, 0, 0.05);
     transition: all 0.25s ease;
 }
+
 .cart-item:hover {
     transform: translateY(-2px);
 }
@@ -622,12 +607,14 @@ const clearCart = () => {
     align-items: center;
     justify-content: center;
 }
+
 .product-image {
     width: 100%;
     height: 100%;
     object-fit: contain;
     padding: 10px;
 }
+
 .image-fallback {
     font-size: 2rem;
     color: #adb5bd;
@@ -648,9 +635,10 @@ const clearCart = () => {
     border: 1px solid #dee2e6;
     padding: 10px;
 }
+
 .qty-input:focus {
     border-color: #ff6b00;
-    box-shadow: 0 0 0 0.2rem rgba(255,107,0,0.15);
+    box-shadow: 0 0 0 0.2rem rgba(255, 107, 0, 0.15);
 }
 
 /* REMOVE */
@@ -663,6 +651,7 @@ const clearCart = () => {
     color: #dc3545;
     transition: all 0.2s ease;
 }
+
 .btn-remove:hover {
     background: #dc3545;
     color: white;
@@ -673,16 +662,18 @@ const clearCart = () => {
     background: white;
     border-radius: 24px;
     padding: 28px;
-    box-shadow: 0 8px 30px rgba(0,0,0,0.06);
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.06);
     position: sticky;
     top: 20px;
 }
+
 .summary-row,
 .summary-total {
     display: flex;
     justify-content: space-between;
     margin-bottom: 16px;
 }
+
 .summary-total {
     font-size: 1.3rem;
     font-weight: 700;
@@ -709,10 +700,12 @@ const clearCart = () => {
     font-weight: 700;
     transition: all 0.25s ease;
 }
+
 .btn-checkout:hover:not(:disabled) {
     transform: translateY(-2px);
     opacity: 0.95;
 }
+
 .btn-checkout:disabled {
     opacity: 0.65;
 }
@@ -734,8 +727,13 @@ const clearCart = () => {
 }
 
 @keyframes fadeIn {
-    from { opacity: 0; }
-    to   { opacity: 1; }
+    from {
+        opacity: 0;
+    }
+
+    to {
+        opacity: 1;
+    }
 }
 
 .modal-box {
@@ -745,13 +743,20 @@ const clearCart = () => {
     max-width: 480px;
     max-height: 90vh;
     overflow-y: auto;
-    box-shadow: 0 24px 60px rgba(0,0,0,0.2);
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.2);
     animation: slideUp 0.25s ease;
 }
 
 @keyframes slideUp {
-    from { transform: translateY(30px); opacity: 0; }
-    to   { transform: translateY(0);    opacity: 1; }
+    from {
+        transform: translateY(30px);
+        opacity: 0;
+    }
+
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
 }
 
 .modal-box-header {
@@ -775,6 +780,7 @@ const clearCart = () => {
     transition: background 0.15s;
     flex-shrink: 0;
 }
+
 .btn-close-modal:hover {
     background: #e9ecef;
 }
@@ -787,6 +793,7 @@ const clearCart = () => {
     border-bottom: 2px solid #f0f0f0;
     margin-bottom: 0;
 }
+
 .modal-tabs button {
     flex: 1;
     background: none;
@@ -800,6 +807,7 @@ const clearCart = () => {
     transition: all 0.2s;
     margin-bottom: -2px;
 }
+
 .modal-tabs button.active {
     color: #ff6b00;
     border-bottom-color: #ff6b00;
@@ -818,6 +826,7 @@ const clearCart = () => {
     max-height: 260px;
     overflow-y: auto;
 }
+
 .account-item {
     display: flex;
     align-items: center;
@@ -831,10 +840,12 @@ const clearCart = () => {
     text-align: left;
     transition: all 0.15s ease;
 }
+
 .account-item:hover {
     background: #fff8f5;
     border-color: #ff6b00;
 }
+
 .account-avatar {
     width: 36px;
     height: 36px;
@@ -851,9 +862,20 @@ const clearCart = () => {
 
 /* MOBILE */
 @media (max-width: 768px) {
-    .cart-header h2 { font-size: 1.5rem; }
-    .summary-card { position: static; }
-    .cart-item { padding: 16px; }
-    .modal-box { border-radius: 16px; }
+    .cart-header h2 {
+        font-size: 1.5rem;
+    }
+
+    .summary-card {
+        position: static;
+    }
+
+    .cart-item {
+        padding: 16px;
+    }
+
+    .modal-box {
+        border-radius: 16px;
+    }
 }
 </style>
