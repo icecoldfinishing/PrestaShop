@@ -24,7 +24,7 @@ const orderStates   = ref([]);
 const loading       = ref(false);
 const updatingId    = ref(null);
 const orderStateMap = ref({});
-
+const customersMap = ref({});
 /* ─────────────────────────────────────────
    SENTINEL "panier"
    "panier" n'est PAS un order_state PrestaShop.
@@ -67,23 +67,47 @@ const getAllOrders = async () => {
     const data = await psGet('orders', '', {
         display: '[id,id_customer,total_paid,current_state,date_add,id_cart]',
     });
+
     const list = data?.prestashop?.orders?.order;
     const arr  = list ? (Array.isArray(list) ? list : [list]) : [];
+
+    const customerIds = [...new Set(arr.map(o => getXmlText(o.id_customer)))]
+        .filter(id => id && id !== '0');
+
+    const custData = await psGet(
+        'customers',
+        '',
+        {
+            display: '[id,firstname,lastname]',
+            'filter[id]': `[${customerIds.join('|')}]`
+        }
+    );
+
+    const rawCust = custData?.prestashop?.customers?.customer;
+    const listCust = Array.isArray(rawCust) ? rawCust : rawCust ? [rawCust] : [];
+
+    listCust.forEach(c => {
+        customersMap.value[c.id] =
+            `${getXmlText(c.firstname)} ${getXmlText(c.lastname)}`;
+    });
 
     orders.value = arr.map(o => {
         const id    = String(o.id);
         const state = getXmlText(o.current_state);
+
         orderStateMap.value[`order-${id}`] = state;
+
         return {
             id,
-            type:          'order',
-            id_cart:       getXmlText(o.id_cart),
-            id_customer:   getXmlText(o.id_customer),
-            total_paid:    parseFloat(o.total_paid || 0).toFixed(2),
+            type: 'order',
+            id_cart: getXmlText(o.id_cart),
+            id_customer: getXmlText(o.id_customer),
+            total_paid: parseFloat(o.total_paid || 0).toFixed(2),
             current_state: state,
-            date_add:      getXmlText(o.date_add),
+            date_add: getXmlText(o.date_add),
         };
     });
+
     addLog(`📦 ${orders.value.length} commande(s)`);
 };
 
@@ -146,7 +170,8 @@ const getAllCarts = async () => {
             })
     );
 
-    carts.value = processed;
+    //carts.value = processed;
+    carts.value = processed.filter(c => Number(c.total_paid) > 0);
     addLog(`🛒 ${carts.value.length} panier(s) libre(s)`);
 };
 
@@ -298,6 +323,8 @@ const refresh = async () => {
         loading.value = false;
     }
 };
+const getCustomerName = (id) =>
+    customersMap.value[id] || `Client #${id}`;
 
 onMounted(async () => {
     await getAllOrderStates();
@@ -335,7 +362,7 @@ onMounted(async () => {
                             {{ item.type === 'cart' ? 'Cart' : 'Order' }} #{{ item.id }}
                         </h5>
 
-                        <p class="text-muted mb-1">Client #{{ item.id_customer }}</p>
+                        <p class="text-muted mb-1">Client : {{ getCustomerName(item.id_customer) }}</p>
 
                         <p class="mb-1">
                             Statut : <strong>{{ getStateLabel(getActiveStateId(item.id, item.type)) }}</strong>
