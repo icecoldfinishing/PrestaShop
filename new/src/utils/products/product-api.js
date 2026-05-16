@@ -1,5 +1,5 @@
 import { reactive, computed } from "vue";
-import { psGet, psPut , psPost, PS_PUBLIC_ORIGIN } from "../prestashop-api";
+import { psGet, psPut, psPost, PS_PUBLIC_ORIGIN } from "../prestashop-api";
 import axios from 'axios';
 import { XMLBuilder, XMLParser } from 'fast-xml-parser';
 import bcrypt from 'bcryptjs';
@@ -36,10 +36,16 @@ const COD_STATE_ID = 10;
  * Commandes légères pour stats / tableau de bord (id, montant, date, état).
  * @returns {Promise<Array<{ id: string, total_paid: number, date_add: string, current_state: string }>>}
  */
+/**
+ * Commandes légères pour stats / tableau de bord (id, montant, date, état).
+ * Filtre : 2 (Paiement accepté), 10 (Paiement à la livraison), 12 (Paiement à distance accepté).
+ * @returns {Promise<Array<{ id: string, total_paid: number, date_add: string, current_state: string }>>}
+ */
 export async function psGetOrdersLight() {
   const data = await psGet('orders', '', {
     display: '[id,total_paid,date_add,current_state,id_customer]',
-    'filter[current_state]': '[2]',
+    // CORRECTION : On filtre sur l'état 2 OU 10 OU 12
+    'filter[current_state]': '[2|10|11]',
     sort: '[id_DESC]'
   });
   const raw = data?.prestashop?.orders?.order;
@@ -246,7 +252,7 @@ export async function psGetCartSecureKey(cartId) {
 export async function psFindOpenCartId(customerId) {
   if (!customerId) return null;
   const data = await psGet('carts', '', {
-    display: '[id,id_customer,date_add]','filter[id_customer]': `[${customerId}]`,
+    display: '[id,id_customer,date_add]', 'filter[id_customer]': `[${customerId}]`,
   });
   const raw = data?.prestashop?.carts?.cart;
   if (!raw) return null;
@@ -514,20 +520,24 @@ export const cart = reactive({
 
   async add(product, quantity = 1, variants = {}) {
     const qty = Number.isFinite(quantity) ? Math.max(1, quantity) : 1;
-    const variantKey = Object.values(variants).join('-');
-    const cartId = `${product.id}-${variantKey}`;
+
+    // Crucial : utiliser l'ID d'attribut pour le cartId (cohérent avec psLoadCartItems)
+    const attrId = Number(product.id_attribute) || 0;
+    const cartId = `${product.id}-${attrId}`;
 
     const existingItem = this.items.find(item => item.cartId === cartId);
     if (existingItem) {
-      existingItem.quantity += qty;
+      // S'assurer que quantity reste un nombre
+      existingItem.quantity = (Number(existingItem.quantity) || 0) + qty;
     } else {
       this.items.push({
         cartId,
         id: product.id,
-        id_attribute: product.id_attribute || 0, // Assure-toi d'avoir l'ID de déclinaison
+        id_attribute: attrId,
         name: product.name,
         price: product.priceTTC,
-        quantity: qty
+        quantity: qty,
+        variants: { ...variants }
       });
     }
 
@@ -580,9 +590,17 @@ export const cart = reactive({
       }
 
       if (this.psCartId) {
-        // SI UN ID EXISTE : MISE À JOUR (PUT)
+        // SI UN ID EXISTE : MISE À JOUR (PUT) avec fallback création si erreur
         console.log(`Mise à jour du panier PS #${this.psCartId}...`);
-        await psUpdateCart(this.psCartId, this.ownerId, itemsForApi, addressId);
+        try {
+          await psUpdateCart(this.psCartId, this.ownerId, itemsForApi, addressId);
+        } catch (putErr) {
+          console.warn(`PUT panier #${this.psCartId} échoué (${putErr?.message}), création d'un nouveau panier...`);
+          this.psCartId = null;
+          const newPsId = await psCreateCart(this.ownerId, itemsForApi, addressId);
+          this.psCartId = newPsId;
+          console.log(`Nouveau panier créé après échec PUT : #${this.psCartId}`);
+        }
       } else {
         // SI PAS D'ID : CRÉATION (POST)
         console.log("Création d'un nouveau panier PS...");
@@ -871,68 +889,65 @@ export async function psCreateOrder({
 
 /**
  * Met à jour un panier existant dans PrestaShop.
+ * Stratégie : GET le XML brut → patcher directement les noeuds par regex
+ * (évite les problèmes de sérialisation JSON→XML avec XMLBuilder).
  */
 export async function psUpdateCart(cartId, customerId, items, addressId) {
-  // 1. Récupérer le panier existant pour avoir tous les champs (secure_key, etc.)
-  const fullData = await psGet('carts', cartId);
-  const cart = fullData?.prestashop?.cart;
+  // 1. GET du XML brut
+  const API_KEY = import.meta.env.VITE_PRESTASHOP_API_KEY;
+  const BASE_URL = import.meta.env.VITE_PRESTASHOP_BASE_URL || '/api';
 
-  if (!cart) {
-    throw new Error(`Impossible de récupérer le panier #${cartId} pour mise à jour.`);
+  const { default: axios } = await import('axios');
+  const getRes = await axios.get(`${BASE_URL}/carts/${cartId}`, {
+    params: { ws_key: API_KEY, output_format: 'XML' },
+    headers: { Accept: 'application/xml' },
+    responseType: 'text',
+  });
+
+  let cartXml = getRes.data;
+
+  // 2. Supprimer TOUS les attributs xlink et xmlns qui font planter le PUT
+  cartXml = cartXml.replace(/ xlink:href="[^"]*"/g, '');
+
+  if (!cartXml || !/<cart[\s>]/.test(cartXml)) {
+    throw new Error(`Impossible de récupérer le XML du panier #${cartId}.`);
   }
 
-  // 2. Préparer les nouvelles lignes avec des IDs propres
-  const cartRows = items.map(item => ({
-    id_product: cleanId(item.id),
-    id_product_attribute: cleanId(item.id_attribute) || 0,
-    id_address_delivery: cleanId(addressId),
-    quantity: item.quantity
-  }));
-
-  // 3. Construire l'objet à renvoyer
-  const updatedCart = {
-    ...cart,
-    id_customer: cleanId(customerId),
-    id_address_delivery: cleanId(addressId),
-    id_address_invoice: cleanId(addressId),
-    associations: {
-      ...(cart.associations || {}),
-      cart_rows: {
-        cart_row: cartRows
-      }
-    }
+  // 3. Patcher les champs simples sans utiliser .test() pour éviter les bugs de lastIndex
+  const patchField = (xml, tag, value) => {
+    const re = new RegExp(`<${tag}(?:\\s[^>]*)?>(?:<\\!\\[CDATA\\[)?[\\s\\S]*?(?:\\]\\]>)?<\\/${tag}>`, 'g');
+    return xml.replace(re, `<${tag}>${value}</${tag}>`);
   };
 
-  // Nettoyage crucial pour PrestaShop PUT :
-  // - Supprime les attributs xlink
-  // - Aplatit les objets { '#text': val, '@_...': ... } en valeur scalaire
-  // - Supprime les clés d'attributs XML pour éviter le double-encodage
-  const cleanForBuild = (obj) => {
-    if (obj === null || obj === undefined) return '';
-    if (Array.isArray(obj)) return obj.map(cleanForBuild);
-    if (typeof obj === 'object') {
-      // Si l'objet contient #text, c'est une valeur XML avec attributs → extraire la valeur
-      if ('#text' in obj) {
-        return obj['#text'] ?? '';
-      }
-      const newObj = {};
-      for (const key in obj) {
-        // Supprimer tous les attributs XML (@_...) du résultat du GET
-        if (key.startsWith('@_')) continue;
-        newObj[key] = cleanForBuild(obj[key]);
-      }
-      return newObj;
-    }
-    return obj;
-  };
+  cartXml = patchField(cartXml, 'id_customer', cleanId(customerId));
+  if (cleanId(addressId)) {
+    cartXml = patchField(cartXml, 'id_address_delivery', cleanId(addressId));
+    cartXml = patchField(cartXml, 'id_address_invoice', cleanId(addressId));
+  }
 
-  const cartData = {
-    prestashop: {
-      cart: cleanForBuild(updatedCart)
-    }
-  };
+  // 4. Construire les nouvelles lignes cart_row
+  const cleanAddr = cleanId(addressId) || '0';
+  const newRows = items.map(item => `
+      <cart_row>
+        <id_product>${cleanId(item.id)}</id_product>
+        <id_product_attribute>${Number(item.id_attribute) || 0}</id_product_attribute>
+        <id_address_delivery>${cleanAddr}</id_address_delivery>
+        <quantity>${Math.max(1, Number(item.quantity) || 1)}</quantity>
+      </cart_row>`).join('');
 
-  const xml = builder.build(cartData);
-  console.log(`PUT Cart #${cartId} XML Preview:`, xml.substring(0, 600));
-  return psPut(`carts/${cartId}`, xml);
+  const cartRowsBlock = `<cart_rows>${newRows}\n    </cart_rows>`;
+
+  // 5. Remplacer le bloc cart_rows (plusieurs formats possibles)
+  if (/<cart_rows\s*\/>/i.test(cartXml)) {
+    cartXml = cartXml.replace(/<cart_rows\s*\/>/i, cartRowsBlock);
+  } else if (/<cart_rows[\s>]/i.test(cartXml)) {
+    cartXml = cartXml.replace(/<cart_rows[\s\S]*?<\/cart_rows>/i, cartRowsBlock);
+  } else if (/<associations>/i.test(cartXml)) {
+    cartXml = cartXml.replace(/<\/associations>/i, `  ${cartRowsBlock}\n    </associations>`);
+  } else {
+    cartXml = cartXml.replace(/<\/cart>/i, `  <associations>\n      ${cartRowsBlock}\n    </associations>\n  </cart>`);
+  }
+
+  console.log(`PUT Cart #${cartId} XML Preview:`, cartXml.substring(0, 800));
+  return psPut(`carts/${cartId}`, cartXml);
 }

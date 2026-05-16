@@ -90,6 +90,12 @@ const getAllOrders = async () => {
 /* ─────────────────────────────────────────
    LOAD CARTS (exclut ceux liés à une commande)
 ───────────────────────────────────────── */
+/* ─────────────────────────────────────────
+   LOAD CARTS (exclut ceux liés à une commande et id_customer = 0)
+───────────────────────────────────────── */
+/* ─────────────────────────────────────────
+   LOAD CARTS (exclut ceux liés à une commande et les clients invités/incomplets)
+───────────────────────────────────────── */
 const getAllCarts = async () => {
     const data = await psGet('carts', '', { display: 'full' });
     const list  = data?.prestashop?.carts?.cart;
@@ -99,7 +105,24 @@ const getAllCarts = async () => {
 
     const processed = await Promise.all(
         arr
-            .filter(c => !orderCartIds.includes(String(c.id)))
+            .filter(c => {
+                // 1. Éviter les paniers déjà liés à une commande
+                const notInOrder = !orderCartIds.includes(String(c.id));
+                
+                // 2. Vérification stricte de l'id_customer
+                const customerId = String(getXmlText(c.id_customer) || '').trim();
+                
+                // Récupération sécurisée des données de base du client si elles existent dans l'objet panier
+                const fname = getXmlText(c.firstname);
+                const lname = getXmlText(c.lastname);
+                const email = getXmlText(c.email);
+
+                // Condition d'exclusion : si l'ID est '0' ET que les champs nominatifs sont vides/nulls
+                const isAnonymeSansInfos = (customerId === '0' || customerId === '') && !fname && !lname && !email;
+
+                // On ne garde que les paniers qui ont une commande libre ET qui ne sont pas anonymes/vides
+                return notInOrder && !isAnonymeSansInfos;
+            })
             .map(async (c) => {
                 const id = String(c.id);
                 orderStateMap.value[`cart-${id}`] = CART_SENTINEL;
