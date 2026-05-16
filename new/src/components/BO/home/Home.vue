@@ -1,7 +1,8 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue';
 import { psCount } from '../../../utils/prestashop-api';
-import {  psGetOrdersDashboardStats } from '../../../utils/products/product-api';
+import {  psGetOrdersDashboardStats, getXmlText } from '../../../utils/products/product-api';
+import { psGet } from '../../../utils/prestashop-api';
 
 const emit = defineEmits(['navigate']);
 
@@ -20,6 +21,8 @@ const ordersByDay = ref([]);
 /** @type {import('vue').Ref<{ count: number, amount: number }>} */
 const ordersTotals = ref({ count: 0, amount: 0 });
 const allOrders = ref([]);
+const customersMap = ref({});
+const statesMap = ref({});
 const selectedDate = ref(''); // Vide = tous
 
 const formatMoney = (n) => {
@@ -56,6 +59,29 @@ const loadOrdersDashboard = async () => {
         ordersByDay.value = byDay;
         ordersTotals.value = totals;
         allOrders.value = orders;
+
+        // Charger les noms des clients et les états
+        const customerIds = [...new Set(orders.map(o => o.id_customer))].filter(Boolean);
+        const stateIds = [...new Set(orders.map(o => o.current_state))].filter(Boolean);
+
+        const [custData, stateData] = await Promise.all([
+            psGet('customers', '', { display: '[id,firstname,lastname]', 'filter[id]': `[${customerIds.join('|')}]` }),
+            psGet('order_states', '', { display: '[id,name]', 'filter[id]': `[${stateIds.join('|')}]` })
+        ]);
+
+        const rawCust = custData?.prestashop?.customers?.customer;
+        const listCust = Array.isArray(rawCust) ? rawCust : rawCust ? [rawCust] : [];
+        listCust.forEach(c => {
+            customersMap.value[c.id] = `${getXmlText(c.firstname)} ${getXmlText(c.lastname)}`;
+        });
+
+        const rawStates = stateData?.prestashop?.order_states?.order_state;
+        const listStates = Array.isArray(rawStates) ? rawStates : rawStates ? [rawStates] : [];
+        listStates.forEach(s => {
+            const name = s.name?.language;
+            statesMap.value[s.id] = Array.isArray(name) ? getXmlText(name[0]) : getXmlText(name);
+        });
+
     } catch (e) {
         console.error(e);
         dashboardError.value = 'Impossible de charger les statistiques commandes.';
@@ -66,6 +92,10 @@ const loadOrdersDashboard = async () => {
         dashboardLoading.value = false;
     }
 };
+
+const getCustomerName = (id) => customersMap.value[id] || `Client #${id}`;
+const getStateName = (id) => statesMap.value[id] || `Statut #${id}`;
+
 
 const filteredOrders = computed(() => {
     if (!selectedDate.value) return allOrders.value;
@@ -197,12 +227,23 @@ onMounted(() => {
                                     </tr>
                                     <!-- LIGNES DU GROUPE -->
                                     <tr v-for="order in group.orders" :key="order.id">
-                                        <td>#{{ order.id }}</td>
-                                        <td class="small text-muted">{{ order.date_add.slice(11, 19) }}</td>
-                                        <td>ID: {{ order.id_customer }}</td>
-                                        <td class="text-end fw-bold">{{ formatMoney(order.total_paid) }} €</td>
+                                        <td>
+                                            <span class="badge bg-light text-dark border">#{{ order.id }}</span>
+                                        </td>
+                                        <td class="small text-muted">{{ order.date_add.slice(11, 16) }}</td>
+                                        <td>
+                                            <div class="d-flex align-items-center">
+                                                <div class="avatar-sm me-2 bg-primary-subtle text-primary rounded-circle d-flex align-items-center justify-content-center fw-bold" style="width: 32px; height: 32px; font-size: 12px;">
+                                                    {{ getCustomerName(order.id_customer).charAt(0) }}
+                                                </div>
+                                                <span class="fw-medium">{{ getCustomerName(order.id_customer) }}</span>
+                                            </div>
+                                        </td>
+                                        <td class="text-end fw-bold text-dark">{{ formatMoney(order.total_paid) }} €</td>
                                         <td class="text-center">
-                                            <span class="badge bg-secondary opacity-75">ID State: {{ order.current_state }}</span>
+                                            <span class="badge rounded-pill px-3 py-1 bg-success-subtle text-success border border-success-subtle">
+                                                {{ getStateName(order.current_state) }}
+                                            </span>
                                         </td>
                                     </tr>
                                 </template>
