@@ -15,7 +15,11 @@ const parser = new XMLParser({
   parseAttributeValue: true,
 });
 
-const builder = new XMLBuilder();
+const builder = new XMLBuilder({
+  ignoreAttributes: false,
+  attributeNamePrefix: '@_',
+  suppressEmptyNode: true,
+});
 const DEFAULT_SHOP_ID = 1;
 const DEFAULT_SHOP_GROUP_ID = 1;
 const DEFAULT_CURRENCY_ID = 1;
@@ -544,19 +548,31 @@ export const cart = reactive({
 
   // La fonction CLÉ : Synchronise l'état local vers la DB PrestaShop
 
+  _syncLock: false,
+  _syncPending: false,
+
   async syncWithPrestaShop() {
     if (!this.ownerId) {
       this.updateTotals();
       return;
     }
 
-    const itemsForApi = this.items.map(item => ({
-      id: item.id,
-      quantity: item.quantity,
-      id_attribute: item.id_attribute || 0
-    }));
+    // Anti race-condition : si un sync tourne déjà, on marque un sync en attente
+    if (this._syncLock) {
+      this._syncPending = true;
+      return;
+    }
+    this._syncLock = true;
+    this._syncPending = false;
 
     try {
+      // Snapshot des items au moment du sync
+      const itemsForApi = this.items.map(item => ({
+        id: String(item.id),
+        quantity: Math.max(1, Number(item.quantity) || 1),
+        id_attribute: Number(item.id_attribute) || 0
+      }));
+
       const addressId = await psEnsureCustomerAddress({ id: this.ownerId });
 
       if (!this.psCartId) {
@@ -580,6 +596,13 @@ export const cart = reactive({
       }
     } catch (err) {
       console.error("Erreur synchro panier PrestaShop:", err);
+    } finally {
+      this._syncLock = false;
+      // Si un sync était en attente, on le déclenche
+      if (this._syncPending) {
+        this._syncPending = false;
+        await this.syncWithPrestaShop();
+      }
     }
 
     this.updateTotals();
@@ -881,15 +904,21 @@ export async function psUpdateCart(cartId, customerId, items, addressId) {
   };
 
   // Nettoyage crucial pour PrestaShop PUT :
-  // Supprimer les attributs xlink et forcer les types simples
+  // - Supprime les attributs xlink
+  // - Aplatit les objets { '#text': val, '@_...': ... } en valeur scalaire
+  // - Supprime les clés d'attributs XML pour éviter le double-encodage
   const cleanForBuild = (obj) => {
-    if (obj === null || obj === undefined) return obj;
+    if (obj === null || obj === undefined) return '';
     if (Array.isArray(obj)) return obj.map(cleanForBuild);
     if (typeof obj === 'object') {
+      // Si l'objet contient #text, c'est une valeur XML avec attributs → extraire la valeur
+      if ('#text' in obj) {
+        return obj['#text'] ?? '';
+      }
       const newObj = {};
       for (const key in obj) {
-        if (key.startsWith('@_xlink:')) continue;
-        // Si c'est un champ ID ou valeur simple, on s'assure qu'il est "plat"
+        // Supprimer tous les attributs XML (@_...) du résultat du GET
+        if (key.startsWith('@_')) continue;
         newObj[key] = cleanForBuild(obj[key]);
       }
       return newObj;
@@ -904,6 +933,6 @@ export async function psUpdateCart(cartId, customerId, items, addressId) {
   };
 
   const xml = builder.build(cartData);
-  console.log(`PUT Cart #${cartId} XML Preview:`, xml.substring(0, 500));
+  console.log(`PUT Cart #${cartId} XML Preview:`, xml.substring(0, 600));
   return psPut(`carts/${cartId}`, xml);
 }
