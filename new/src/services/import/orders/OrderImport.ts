@@ -659,6 +659,18 @@ async function updateOrderState(orderId: number, stateId: number) {
   await safePost("/order_histories", xml)
 }
 
+async function updateStockDelta(productId: number, attributeId: number, delta: number) {
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<prestashop xmlns:xlink="http://www.w3.org/1999/xlink">
+  <stock_delta>
+    <id_product>${productId}</id_product>
+    <id_product_attribute>${attributeId}</id_product_attribute>
+    <delta>${delta}</delta>
+  </stock_delta>
+</prestashop>`
+  await safePost("/stock_deltas", xml)
+}
+
 /* =====================================================
    MAIN PROCESS
 ===================================================== */
@@ -778,6 +790,16 @@ async function processRow(row: CsvOrder) {
     cartItems,
     orderDate
   )
+
+  // Enregistrer le mouvement de stock pour chaque article commandé
+  for (const item of cartItems) {
+    try {
+      console.log(`📉 Enregistrement mouvement de stock (import) pour produit #${item.productId} (déclinaison #${item.attributeId}) : -${item.qty}`)
+      await updateStockDelta(item.productId, item.attributeId, -item.qty)
+    } catch (e: any) {
+      console.error(`⚠️ Impossible d'enregistrer le mouvement de stock (import) pour produit #${item.productId} :`, e.message)
+    }
+  }
 
   /**
    * ÉTAPE B : Forçage de la date de commande

@@ -52,7 +52,7 @@ export async function psGetStockAvailables() {
 /**
  * Récupère un stock disponible spécifique
  */
-export async function psGetStockAvailable(stockId: string | number) {
+export async function psGetStockAvailable(stockId) {
   const data = await psGet('stock_availables', stockId);
 
   return data?.prestashop?.stock_available;
@@ -65,8 +65,8 @@ export async function psGetStockAvailable(stockId: string | number) {
  * ==========================================================
  */
 export async function psUpdateStockAvailable(
-  stockId: string | number,
-  newQuantity: number
+  stockId,
+  newQuantity
 ) {
   // 1. Charger le stock actuel
   const currentStock = await psGetStockAvailable(stockId);
@@ -140,9 +140,9 @@ export async function psUpdateStockAvailable(
  * ==========================================================
  */
 export async function psUpdateStockByDelta(
-  idProduct: string | number,
-  delta: number,
-  idProductAttribute: string | number = 0
+  idProduct,
+  delta,
+  idProductAttribute = 0
 ) {
   if (!delta || delta === 0) {
     throw new Error('Delta invalide');
@@ -201,8 +201,8 @@ export async function psGetStockMovementsFromOrders(
     for (const o of orders) {
       const stateId = cleanId(o.current_state);
 
-      // paiement accepté
-      if (stateId !== '2') continue;
+      // Exclure uniquement les états Annulé (6) et Erreur de paiement (8)
+      if (stateId === '6' || stateId === '8') continue;
 
       const rows = [].concat(
         o.associations?.order_rows?.order_row || []
