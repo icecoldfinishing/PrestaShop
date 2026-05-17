@@ -777,31 +777,7 @@ export async function psBuildOrderRowsFromCartWebService(cartId) {
 }
 
 
-async function psAddStockDelta(productId, attributeId, delta) {
-  const xml = `<?xml version="1.0" encoding="UTF-8"?>
-<prestashop xmlns:xlink="http://www.w3.org/1999/xlink">
-  <stock_delta>
-    <id_product>${productId}</id_product>
-    <id_product_attribute>${attributeId}</id_product_attribute>
-    <delta>${delta}</delta>
-  </stock_delta>
-</prestashop>`;
 
-  const API_KEY = import.meta.env.VITE_PRESTASHOP_API_KEY;
-  const BASE_URL = import.meta.env.VITE_PRESTASHOP_BASE_URL || '/api';
-  const { default: axios } = await import('axios');
-  
-  await axios.post(
-    `${BASE_URL}/stock_deltas?ws_key=${API_KEY}`,
-    xml,
-    {
-      headers: {
-        'Content-Type': 'application/xml',
-        Accept: 'application/xml',
-      },
-    }
-  );
-}
 
 /**
  * Crée une commande PrestaShop. `secureKey` = clé du panier (GET carts).
@@ -912,37 +888,7 @@ export async function psCreateOrder({
     throw new Error(errBody || 'Réponse POST /orders sans id commande (XML inattendu).');
   }
 
-  // Enregistrer le mouvement de stock pour chaque article commandé
-  if (lineItems && lineItems.length) {
-    for (const item of lineItems) {
-      try {
-        const pid = cleanId(item.productId ?? item.id);
-        const attr = cleanId(item.productAttributeId ?? item.id_attribute ?? 0) || '0';
-        const qty = Math.max(1, Number(item.quantity) || 1);
-        console.log(`📉 Enregistrement mouvement de stock (commande) pour produit #${pid} (déclinaison #${attr}) : -${qty}`);
-        await psAddStockDelta(pid, attr, -qty);
-      } catch (stockErr) {
-        console.error('⚠️ Impossible d\'enregistrer le mouvement de stock pour la ligne :', item, stockErr);
-      }
-    }
-  } else {
-    try {
-      const items = await psLoadCartItems(cartId);
-      for (const item of items) {
-        try {
-          const pid = cleanId(item.id);
-          const attr = cleanId(item.id_attribute) || '0';
-          const qty = Math.max(1, Number(item.quantity) || 1);
-          console.log(`📉 Enregistrement mouvement de stock (commande panier) pour produit #${pid} (déclinaison #${attr}) : -${qty}`);
-          await psAddStockDelta(pid, attr, -qty);
-        } catch (stockErr) {
-          console.error('⚠️ Impossible d\'enregistrer le mouvement de stock pour l\'article du panier :', item, stockErr);
-        }
-      }
-    } catch (cartLoadErr) {
-      console.error('⚠️ Impossible de lire les articles du panier pour l\'évolution du stock :', cartLoadErr);
-    }
-  }
+
 
   return id;
 }
