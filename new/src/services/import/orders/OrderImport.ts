@@ -659,6 +659,8 @@ async function updateOrderState(orderId: number, stateId: number) {
   await safePost("/order_histories", xml)
 }
 
+
+
 /* =====================================================
    MAIN PROCESS
 ===================================================== */
@@ -778,6 +780,8 @@ async function processRow(row: CsvOrder) {
     cartItems,
     orderDate
   )
+
+
 
   /**
    * ÉTAPE B : Forçage de la date de commande

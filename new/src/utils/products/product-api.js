@@ -44,7 +44,8 @@ const COD_STATE_ID = 10;
 export async function psGetOrdersLight() {
   const data = await psGet('orders', '', {
     display: '[id,total_paid,date_add,current_state,id_customer]',
-    // CORRECTION : On filtre sur l'état 2 OU 10 OU 12
+    // CORRECTION : On filtre sur l'état 2 OU 10 OU 11
+    // 06 annule
     'filter[current_state]': '[2|10|11]',
     sort: '[id_DESC]'
   });
@@ -776,6 +777,8 @@ export async function psBuildOrderRowsFromCartWebService(cartId) {
 }
 
 
+
+
 /**
  * Crée une commande PrestaShop. `secureKey` = clé du panier (GET carts).
  * Lignes : `orderRowsXml` si fourni, sinon `lineItems`, sinon relecture GET panier + produits.
@@ -884,6 +887,9 @@ export async function psCreateOrder({
     const errBody = extractPrestaShopErrorsFromXml(typeof response === 'string' ? response : String(response));
     throw new Error(errBody || 'Réponse POST /orders sans id commande (XML inattendu).');
   }
+
+
+
   return id;
 }
 
