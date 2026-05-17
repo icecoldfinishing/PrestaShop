@@ -1,40 +1,67 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue';
 import { psGet } from '../../../utils/prestashop-api';
-import { cleanId, getXmlText, extractText } from '../../../utils/products/product-api';
+import {
+    cleanId,
+    getXmlText,
+    extractText
+} from '../../../utils/products/product-api';
 
-// Configuration liée aux proxys déclarés dans vite.config.js
-const API_STOCK_ENDPOINT = '/api-stock';
+/**
+ * =========================================================
+ * CONFIG
+ * =========================================================
+ */
+const API_URL = '/api';
 const WS_KEY = 'Q2C19X4XAS6JFE2AHQCEMFZC7IY24LH5';
 
+/**
+ * =========================================================
+ * STATE
+ * =========================================================
+ */
 const products = ref([]);
 const stocks = ref([]);
 const combinations = ref([]);
 const optionValues = ref({});
+
+// Gestion des lignes de produits déroulées dans l'interface { [productId]: boolean }
+const expandedProducts = ref({});
+
 const loading = ref(false);
 const updatingId = ref(null);
 
 const showEvolutionModal = ref(false);
 const evolutionLoading = ref(false);
+
 const selectedProductForEvolution = ref(null);
 const stockMovements = ref([]);
 
 /**
- * Chargement des structures de données PrestaShop via le proxy natif
+ * =========================================================
+ * LOAD DATA
+ * =========================================================
  */
 const loadData = async () => {
     loading.value = true;
     try {
-        const [prodData, stockData, comboData, optValData] = await Promise.all([
+        const [
+            prodData,
+            stockData,
+            comboData,
+            optValData
+        ] = await Promise.all([
             psGet('products', '', { display: '[id,name,reference,price]' }),
             psGet('stock_availables', '', { display: 'full' }),
             psGet('combinations', '', { display: 'full' }),
             psGet('product_option_values', '', { display: 'full' })
         ]);
 
+        /**
+         * PRODUCTS
+         */
         const rawProducts = prodData?.prestashop?.products?.product || [];
         const productList = Array.isArray(rawProducts) ? rawProducts : [rawProducts];
-
         products.value = productList.map(p => ({
             id: cleanId(p.id),
             name: extractText(p.name),
@@ -42,6 +69,9 @@ const loadData = async () => {
             price: parseFloat(getXmlText(p.price) || '0').toFixed(2)
         }));
 
+        /**
+         * STOCKS
+         */
         const rawStocks = [].concat(stockData?.prestashop?.stock_availables?.stock_available || []);
         stocks.value = rawStocks.map(s => ({
             id: cleanId(s.id),
@@ -50,6 +80,9 @@ const loadData = async () => {
             quantity: parseInt(getXmlText(s.quantity) || '0', 10)
         }));
 
+        /**
+         * COMBINATIONS
+         */
         const rawCombos = [].concat(comboData?.prestashop?.combinations?.combination || []);
         combinations.value = rawCombos.map(c => ({
             id: cleanId(c.id),
@@ -57,146 +90,220 @@ const loadData = async () => {
             option_values: [].concat(c.associations?.product_option_values?.product_option_value || []).map(v => cleanId(v.id))
         }));
 
+        /**
+         * OPTION VALUES
+         */
         const rawOpts = [].concat(optValData?.prestashop?.product_option_values?.product_option_value || []);
         rawOpts.forEach(o => {
             optionValues.value[cleanId(o.id)] = extractText(o.name);
         });
 
     } catch (err) {
-        console.error("Error loading stocks data:", err);
+        console.error('Erreur chargement stocks:', err);
     } finally {
         loading.value = false;
     }
 };
 
 /**
- * Calcul et filtrage des lignes de produits simples et déclinés
+ * Basculer l'affichage des déclinaisons d'un produit
  */
-const productStocks = computed(() => {
-    const list = [];
+const toggleExpand = (productId) => {
+    expandedProducts.value[productId] = !expandedProducts.value[productId];
+};
 
-    products.value.forEach(p => {
-        const productCombinations = combinations.value.filter(c => c.id_product === p.id);
+/**
+ * =========================================================
+ * COMPUTED: HIERARCHICAL PRODUCTS FOR TABLE
+ * =========================================================
+ */
+const productRows = computed(() => {
+    return products.value.map(p => {
+        const productCombos = combinations.value.filter(c => c.id_product === p.id);
+        const hasCombinations = productCombos.length > 0;
 
-        if (productCombinations.length > 0) {
-            productCombinations.forEach(combo => {
-                const s = stocks.value.find(
-                    s => s.id_product === p.id && s.id_product_attribute === combo.id
-                );
-                if (!s) return;
+        // Générer la liste des déclinaisons "enfants"
+        const children = productCombos.map(combo => {
+            const variationName = combo.option_values
+                .map(vId => optionValues.value[vId])
+                .filter(Boolean)
+                .join(', ') || `Déclinaison #${combo.id}`;
 
-                const variationName = combo.option_values
-                    .map(vId => optionValues.value[vId])
-                    .filter(Boolean)
-                    .join(', ') || 'Déclinaison';
-
-                list.push({
-                    ...p,
-                    displayName: `${p.name} - ${variationName}`,
-                    stockId: s.id,
-                    quantity: s.quantity,
-                    id_product_attribute: s.id_product_attribute
-                });
-            });
-        } else {
-            const mainStock = stocks.value.find(
-                s => s.id_product === p.id &&
-                    (s.id_product_attribute === '0' || s.id_product_attribute === '')
+            const comboStock = stocks.value.find(s => 
+                s.id_product === p.id && String(s.id_product_attribute) === String(combo.id)
             );
-            if (!mainStock) return;
 
-            list.push({
-                ...p,
-                displayName: p.name,
-                stockId: mainStock.id,
-                quantity: mainStock.quantity,
-                id_product_attribute: '0'
-            });
-        }
+            return {
+                id: combo.id,
+                name: variationName,
+                stockId: comboStock ? comboStock.id : null,
+                quantity: comboStock ? comboStock.quantity : 0,
+                attributeId: combo.id,
+                reference: p.reference // hérite ou gère la réf si nécessaire
+            };
+        });
+
+        // Pour un produit simple, stock global direct (id_product_attribute = '0')
+        const mainStock = stocks.value.find(s => 
+            s.id_product === p.id && String(s.id_product_attribute) === '0'
+        );
+
+        // Quantité totale (somme des déclinaisons ou quantité globale)
+        const totalQuantity = hasCombinations 
+            ? children.reduce((sum, child) => sum + child.quantity, 0)
+            : (mainStock ? mainStock.quantity : 0);
+
+        return {
+            ...p,
+            hasCombinations,
+            children,
+            stockId: mainStock ? mainStock.id : null,
+            quantity: totalQuantity,
+            isExpanded: !!expandedProducts.value[p.id]
+        };
     });
-
-    return list;
 });
 
 /**
- * Actionneur d'incrémentation ou décrémentation via /api-stock
+ * =========================================================
+ * UPDATE QUANTITY
+ * =========================================================
  */
-const updateQuantity = async (product, amount) => {
-    const stockId = product.stockId;
-    if (!stockId) return;
+const updateQuantity = async (target, delta) => {
+    if (!target.stockId) return;
+    updatingId.value = target.stockId;
 
-    updatingId.value = stockId;
+    const attributeId = target.attributeId || '0';
+    const productId = target.id_product || target.id;
 
     try {
-        const url = `${API_STOCK_ENDPOINT}?action=update&id_product=${product.id}&id_product_attribute=${product.id_product_attribute}&delta=${amount}&ws_key=${WS_KEY}`;
-        const response = await fetch(url);
-        const resData = await response.json();
+        const xmlData = `<?xml version="1.0" encoding="UTF-8"?>
+<prestashop xmlns:xlink="http://www.w3.org/1999/xlink">
+    <stock_delta>
+        <id_product>${productId}</id_product>
+        <id_product_attribute>${attributeId}</id_product_attribute>
+        <delta>${delta}</delta>
+    </stock_delta>
+</prestashop>`;
 
-        if (resData.status === 'success') {
-            // Reprise de la valeur exacte recalculée par le serveur SQL
-            const stockEntry = stocks.value.find(s => s.id === stockId);
-            if (stockEntry) {
-                stockEntry.quantity = resData.new_quantity;
-            }
-            product.quantity = resData.new_quantity;
-        } else {
-            throw new Error(resData.error || 'Erreur lors du traitement');
+        const response = await fetch(`${API_URL}/stock_deltas?ws_key=${WS_KEY}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/xml',
+                'Accept': 'application/xml'
+            },
+            body: xmlData
+        });
+
+        if (!response.ok) {
+            const errText = await response.text();
+            throw new Error(`HTTP ${response.status}\n${errText}`);
         }
+
+        // Mutation locale directe du stock
+        const stockEntry = stocks.value.find(s => s.id === target.stockId);
+        if (stockEntry) {
+            stockEntry.quantity += delta;
+            if (stockEntry.quantity < 0) stockEntry.quantity = 0;
+        }
+
+        await refreshSingleStock(productId, attributeId);
+
     } catch (err) {
-        console.error("Error updating stock via proxy endpoint:", err);
-        alert(`Erreur de mise à jour : ${err.message}`);
+        console.error('Erreur update stock:', err);
+        alert(`Erreur mise à jour stock:\n${err.message}`);
     } finally {
         updatingId.value = null;
     }
 };
 
 /**
- * Récupération et formatage de la liste de mouvements réels (Fenêtre Évolution)
+ * =========================================================
+ * REFRESH SINGLE STOCK
+ * =========================================================
  */
-const viewEvolution = async (product) => {
-    selectedProductForEvolution.value = product;
+const refreshSingleStock = async (productId, productAttributeId) => {
+    try {
+        const data = await psGet('stock_availables', '', {
+            [`filter[id_product]`]: productId,
+            display: 'full'
+        });
+
+        const raw = [].concat(data?.prestashop?.stock_availables?.stock_available || []);
+        const found = raw.find(s => cleanId(s.id_product_attribute) === String(productAttributeId));
+
+        if (!found) return;
+
+        const stockEntry = stocks.value.find(s => 
+            s.id_product === String(productId) && 
+            s.id_product_attribute === String(productAttributeId)
+        );
+
+        if (stockEntry) {
+            stockEntry.quantity = parseInt(getXmlText(found.quantity) || '0', 10);
+        }
+    } catch (err) {
+        console.error('Erreur refresh stock:', err);
+    }
+};
+
+/**
+ * =========================================================
+ * VIEW EVOLUTION (MODAL)
+ * =========================================================
+ */
+const viewEvolution = async (productRow, attributeId = '0', displayName = '') => {
+    selectedProductForEvolution.value = {
+        name: productRow.name,
+        displayName: displayName || productRow.name
+    };
     showEvolutionModal.value = true;
     evolutionLoading.value = true;
     stockMovements.value = [];
 
     try {
-        const url = `${API_STOCK_ENDPOINT}?action=get_movements&id_product=${product.id}&id_product_attribute=${product.id_product_attribute}&ws_key=${WS_KEY}`;
-        const response = await fetch(url);
-        const resData = await response.json();
+        const data = await psGet('stock_deltas', '', {
+            [`filter[id_product]`]: productRow.id,
+            display: 'full'
+        });
 
-        if (resData.status === 'success') {
-            let currentRollingQty = product.quantity;
+        const raw = [].concat(data?.prestashop?.stock_deltas?.stock_delta || []);
+        const filtered = raw.filter(m => cleanId(m.id_product_attribute || '0') === String(attributeId));
 
-            // Mapping des mouvements SQL trouvés
-            const processedMvts = resData.movements.map((mvt, index) => {
-                const displayingQty = currentRollingQty;
-                // Calcul rétrograde pour estimer l'état du stock précédent
-                currentRollingQty = currentRollingQty - (mvt.change * mvt.sign);
+        filtered.sort((a, b) => new Date(getXmlText(b.date_add)).getTime() - new Date(getXmlText(a.date_add)).getTime());
 
-                return {
-                    id: mvt.id_stock_mvt || index,
-                    date: mvt.date,
-                    reason: `${mvt.reason} (${mvt.employee || 'Système'})`,
-                    change: mvt.change,
-                    sign: mvt.sign,
-                    quantity: displayingQty
-                };
-            });
+        const targetStock = attributeId === '0' 
+            ? productRow.quantity 
+            : (productRow.children.find(c => c.id === attributeId)?.quantity || 0);
 
-            // Injection de la ligne de repère historique
-            processedMvts.push({
-                id: 'initial',
-                date: 'Initial',
-                reason: 'Stock résiduel historique',
-                change: currentRollingQty,
-                sign: 1,
-                quantity: currentRollingQty
-            });
+        let rollingQty = targetStock;
+        const processed = filtered.map((mvt, index) => {
+            const delta = parseInt(getXmlText(mvt.delta) || '0', 10);
+            const currentQty = rollingQty;
+            rollingQty -= delta;
 
-            stockMovements.value = processedMvts;
-        }
+            return {
+                id: cleanId(mvt.id) || index,
+                date: getXmlText(mvt.date_add),
+                reason: delta > 0 ? 'Ajout manuel' : 'Retrait manuel',
+                change: Math.abs(delta),
+                sign: delta > 0 ? 1 : -1,
+                quantity: currentQty
+            };
+        });
+
+        processed.push({
+            id: 'initial',
+            date: 'Initial',
+            reason: 'Stock historique',
+            change: rollingQty,
+            sign: 1,
+            quantity: rollingQty
+        });
+
+        stockMovements.value = processed;
     } catch (err) {
-        console.error("Error loading movements history via proxy:", err);
+        console.error('Erreur historique stock:', err);
     } finally {
         evolutionLoading.value = false;
     }
@@ -225,73 +332,148 @@ onMounted(() => {
         <div v-else class="card border-0 shadow-sm">
             <div class="card-body p-0">
                 <div class="table-responsive">
-                    <table class="table table-hover align-middle mb-0">
+                    <table class="table align-middle mb-0 custom-stock-table">
                         <thead class="table-light">
                             <tr>
-                                <th class="ps-4">ID</th>
-                                <th>Produit</th>
-                                <th>Référence</th>
-                                <th class="text-center">Quantité actuelle</th>
-                                <th class="text-center">Ajuster (Ajouter/Enlever)</th>
-                                <th class="text-end pe-4">Actions</th>
+                                <th style="width: 50px;"></th>
+                                <th style="width: 100px;">ID</th>
+                                <th>Produit / Déclinaison</th>
+                                <th style="width: 180px;">Référence</th>
+                                <th class="text-center" style="width: 180px;">Quantité actuelle</th>
+                                <th class="text-center" style="width: 260px;">Ajuster (Ajouter/Enlever)</th>
+                                <th class="text-end pe-4" style="width: 160px;">Actions</th>
                             </tr>
                         </thead>
                         <tbody>
-                            <tr v-if="productStocks.length === 0">
-                                <td colspan="6" class="text-center py-4 text-muted">
+                            <tr v-if="productRows.length === 0">
+                                <td colspan="7" class="text-center py-4 text-muted">
                                     Aucun produit trouvé.
                                 </td>
                             </tr>
-                            <tr v-for="product in productStocks" :key="product.stockId">
-                                <td class="ps-4 text-muted">#{{ product.id }}</td>
-                                <td class="fw-bold">{{ product.displayName }}</td>
-                                <td>{{ product.reference || '-' }}</td>
-                                <td class="text-center">
-                                    <span class="badge"
-                                        :class="product.quantity > 5 ? 'bg-success' : (product.quantity > 0 ? 'bg-warning' : 'bg-danger')">
-                                        {{ product.quantity }}
-                                    </span>
-                                </td>
-                                <td class="text-center">
-                                    <div class="d-inline-flex align-items-center bg-light rounded p-1 border">
-                                        <button class="btn btn-sm btn-outline-secondary border-0"
-                                            @click="updateQuantity(product, -1)"
-                                            :disabled="updatingId === product.stockId || product.quantity <= 0">
-                                            <span v-if="updatingId === product.stockId" class="spinner-border spinner-border-sm"></span>
-                                            <i v-else class="bi bi-dash-lg"></i>
+                            
+                            <!-- BOUCLE DÉROULANTE -->
+                            <template v-for="product in productRows" :key="product.id">
+                                <!-- LIGNE MÈRE (PRODUIT GLOBAL) -->
+                                <tr :class="{'table-parent-row fw-bold': product.hasCombinations, 'border-bottom-0': product.isExpanded}">
+                                    <td class="text-center">
+                                        <button 
+                                            v-if="product.hasCombinations"
+                                            class="btn btn-sm btn-link text-primary p-0 border-0 toggle-btn"
+                                            @click="toggleExpand(product.id)"
+                                        >
+                                            <i class="bi fs-5" :class="product.isExpanded ? 'bi-dash-square' : 'bi-plus-square'"></i>
                                         </button>
-
-                                        <span class="mx-3 fw-bold">
-                                            {{ product.quantity }}
+                                    </td>
+                                    
+                                    <td class="text-muted">#{{ product.id }}</td>
+                                    <td>
+                                        <span class="product-title">{{ product.name }}</span>
+                                        <span v-if="product.hasCombinations" class="badge bg-primary-subtle text-primary border border-primary-subtle ms-2 small-badge">
+                                            {{ product.children.length }} déclinaisons
                                         </span>
-
-                                        <button class="btn btn-sm btn-outline-secondary border-0"
-                                            @click="updateQuantity(product, 1)"
-                                            :disabled="updatingId === product.stockId">
-                                            <span v-if="updatingId === product.stockId" class="spinner-border spinner-border-sm"></span>
-                                            <i v-else class="bi bi-plus-lg"></i>
+                                    </td>
+                                    <td>{{ product.reference || '-' }}</td>
+                                    
+                                    <!-- Quantité Totale (Mère) -->
+                                    <td class="text-center">
+                                        <span class="badge px-3 py-2 fs-6 shadow-xs"
+                                            :class="product.quantity > 5 ? 'bg-success' : (product.quantity > 0 ? 'bg-warning text-dark' : 'bg-danger')">
+                                            {{ product.quantity }} {{ product.hasCombinations ? '' : '' }}
+                                        </span>
+                                    </td>
+                                    
+                                    <!-- Bloc d'ajustement Mère -->
+                                    <td class="text-center">
+                                        <div v-if="!product.hasCombinations" class="d-inline-flex align-items-center bg-light rounded p-1 border">
+                                            <button class="btn btn-sm btn-outline-secondary border-0 icon-btn"
+                                                @click="updateQuantity(product, -1)"
+                                                :disabled="updatingId === product.stockId || product.quantity <= 0">
+                                                <span v-if="updatingId === product.stockId" class="spinner-border spinner-border-sm"></span>
+                                                <i v-else class="bi bi-dash-lg"></i>
+                                            </button>
+                                            <span class="mx-3 fw-bold min-width-qty">{{ product.quantity }}</span>
+                                            <button class="btn btn-sm btn-outline-secondary border-0 icon-btn"
+                                                @click="updateQuantity(product, 1)"
+                                                :disabled="updatingId === product.stockId">
+                                                <span v-if="updatingId === product.stockId" class="spinner-border spinner-border-sm"></span>
+                                                <i v-else class="bi bi-plus-lg"></i>
+                                            </button>
+                                        </div>
+                                        <span v-else class="text-muted small-text italic text-uppercase fw-normal tracking-wide">
+                                            <i class="bi bi-arrow-down-short"></i>
+                                        </span>
+                                    </td>
+                                    
+                                    <td class="text-end pe-4">
+                                        <button v-if="!product.hasCombinations" class="btn btn-sm btn-info text-white shadow-sm fw-normal" @click="viewEvolution(product, '0', product.name)">
+                                            <i class="bi bi-graph-up-arrow me-1"></i> Évolution
                                         </button>
-                                    </div>
-                                </td>
-                                <td class="text-end pe-4">
-                                    <button class="btn btn-sm btn-info text-white" @click="viewEvolution(product)">
-                                        Évolution
-                                    </button>
-                                </td>
-                            </tr>
+                                    </td>
+                                </tr>
+
+                                <!-- LIGNES FILLES (DÉCLINAISONS HÉRITÉES DU DESIGN MÈRE) -->
+                                <template v-if="product.hasCombinations && product.isExpanded">
+                                    <tr v-for="child in product.children" :key="child.id" class="table-child-row bg-light-subtle transition-row">
+                                        <!-- Structure identique avec indentations de clarté visuelle -->
+                                        <td class="text-center border-end-indent">
+                                            <i class="bi bi-arrow-return-right text-muted opacity-50 ms-1"></i>
+                                        </td>
+                                        <td class="text-muted small-text text-end pe-3">#{{ child.id }}</td>
+                                        <td class="ps-3">
+                                            <span class="text-secondary fw-semibold">{{ child.name }}</span>
+                                        </td>
+                                        <td class="text-muted small-text">{{ child.reference || '-' }}</td>
+                                        
+                                        <!-- Quantité Enfant (Design identique à la mère) -->
+                                        <td class="text-center">
+                                            <span class="badge px-3 py-2 fs-6 shadow-xs"
+                                                :class="child.quantity > 5 ? 'bg-success' : (child.quantity > 0 ? 'bg-warning text-dark' : 'bg-danger')">
+                                                {{ child.quantity }}
+                                            </span>
+                                        </td>
+                                        
+                                        <!-- Bloc d'ajustement Enfant (Design identique à la mère) -->
+                                        <td class="text-center">
+                                            <div class="d-inline-flex align-items-center bg-white rounded p-1 border shadow-xs">
+                                                <button class="btn btn-sm btn-outline-secondary border-0 icon-btn"
+                                                    @click="updateQuantity({ ...child, id_product: product.id }, -1)"
+                                                    :disabled="updatingId === child.stockId || child.quantity <= 0">
+                                                    <span v-if="updatingId === child.stockId" class="spinner-border spinner-border-sm"></span>
+                                                    <i v-else class="bi bi-dash-lg"></i>
+                                                </button>
+                                                <span class="mx-3 fw-bold min-width-qty text-dark">{{ child.quantity }}</span>
+                                                <button class="btn btn-sm btn-outline-secondary border-0 icon-btn"
+                                                    @click="updateQuantity({ ...child, id_product: product.id }, 1)"
+                                                    :disabled="updatingId === child.stockId">
+                                                    <span v-if="updatingId === child.stockId" class="spinner-border spinner-border-sm"></span>
+                                                    <i v-else class="bi bi-plus-lg"></i>
+                                                </button>
+                                            </div>
+                                        </td>
+                                        
+                                        <!-- Action Enfant (Design identique à la mère) -->
+                                        <td class="text-end pe-4">
+                                            <button class="btn btn-sm btn-outline-info shadow-xs fw-normal" @click="viewEvolution(product, child.attributeId, `${product.name} (${child.name})`)">
+                                                <i class="bi bi-graph-up-arrow me-1"></i> Évolution
+                                            </button>
+                                        </td>
+                                    </tr>
+                                </template>
+                            </template>
                         </tbody>
                     </table>
                 </div>
             </div>
         </div>
 
+        <!-- MODAL HISTORIQUE (Inchangé) -->
         <div v-if="showEvolutionModal" class="modal-backdrop fade show"></div>
         <div v-if="showEvolutionModal" class="modal fade show d-block" tabindex="-1">
             <div class="modal-dialog modal-lg modal-dialog-centered">
-                <div class="modal-content">
-                    <div class="modal-header">
-                        <h5 class="modal-title fw-bold">
-                            Évolution du stock : {{ selectedProductForEvolution?.displayName }}
+                <div class="modal-content border-0 shadow-lg">
+                    <div class="modal-header bg-light">
+                        <h5 class="modal-title fw-bold text-dark">
+                            <i class="bi bi-clock-history me-2 text-primary"></i> Évolution du stock : {{ selectedProductForEvolution?.displayName }}
                         </h5>
                         <button type="button" class="btn-close" @click="closeEvolutionModal"></button>
                     </div>
@@ -301,17 +483,16 @@ onMounted(() => {
                         </div>
                         <div v-else>
                             <p class="text-muted mb-4">
-                                Historique des mouvements de stock journaliers pour le produit <strong>{{ selectedProductForEvolution?.displayName }}</strong>.
+                                Historique complet des ajustements pour <strong>{{ selectedProductForEvolution?.displayName }}</strong>.
                             </p>
-
-                            <div class="table-responsive border rounded">
-                                <table class="table table-striped table-hover mb-0">
+                            <div class="table-responsive border rounded bg-white">
+                                <table class="table table-striped table-hover align-middle mb-0">
                                     <thead class="table-light">
                                         <tr>
-                                            <th>Date</th>
+                                            <th class="ps-3">Date</th>
                                             <th>Raison / Action</th>
                                             <th class="text-center">Mouvement</th>
-                                            <th class="text-end pe-3">Quantité Résultante</th>
+                                            <th class="text-end pe-4">Quantité Résultante</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -321,7 +502,7 @@ onMounted(() => {
                                             </td>
                                         </tr>
                                         <tr v-for="mvt in stockMovements" :key="mvt.id">
-                                            <td>
+                                            <td class="ps-3">
                                                 {{ mvt.date === 'Initial' ? 'Origine' : new Date(mvt.date).toLocaleDateString('fr-FR', {
                                                     weekday: 'short', year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
                                                 }) }}
@@ -332,7 +513,7 @@ onMounted(() => {
                                                     {{ mvt.date === 'Initial' ? '' : (mvt.sign === 1 ? '+' : '-') }}{{ mvt.change }}
                                                 </span>
                                             </td>
-                                            <td class="text-end pe-3 fw-bold">
+                                            <td class="text-end pe-4 fw-bold">
                                                 {{ mvt.quantity }}
                                             </td>
                                         </tr>
@@ -341,7 +522,7 @@ onMounted(() => {
                             </div>
                         </div>
                     </div>
-                    <div class="modal-footer">
+                    <div class="modal-footer bg-light">
                         <button type="button" class="btn btn-secondary" @click="closeEvolutionModal">Fermer</button>
                     </div>
                 </div>
@@ -352,6 +533,70 @@ onMounted(() => {
 
 <style scoped>
 .modal-backdrop {
-    background-color: rgba(0, 0, 0, 0.5);
+    background-color: rgba(0, 0, 0, 0.4);
+}
+.min-width-qty {
+    display: inline-block;
+    min-width: 30px;
+    text-align: center;
+}
+.small-text {
+    font-size: 0.825rem;
+}
+.small-badge {
+    font-size: 0.75rem;
+    padding: 0.25em 0.6em;
+}
+.italic {
+    font-style: italic;
+}
+.tracking-wide {
+    letter-spacing: 0.05em;
+}
+.shadow-xs {
+    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+}
+
+/* Alignements et distinction Parent/Enfant */
+.custom-stock-table th {
+    font-weight: 600;
+    text-transform: uppercase;
+    font-size: 0.8rem;
+    letter-spacing: 0.03em;
+    padding-top: 12px;
+    padding-bottom: 12px;
+}
+.table-parent-row {
+    background-color: #ffffff;
+}
+.table-child-row {
+    background-color: #f8f9fa !important;
+    border-left: 3px solid #0d6efd; /* Repère visuel bleu de l'arborescence */
+}
+.table-child-row td {
+    padding-top: 8px;
+    padding-bottom: 8px;
+}
+.border-end-indent {
+    background-color: #f1f3f5;
+}
+.toggle-btn {
+    text-decoration: none;
+    transition: transform 0.2s;
+}
+.toggle-btn:hover {
+    transform: scale(1.1);
+}
+.icon-btn {
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+}
+.product-title {
+    font-size: 0.95rem;
 }
 </style>
