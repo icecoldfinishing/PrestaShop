@@ -1,5 +1,6 @@
 import prestashop from "../../prestashop"
 
+
 export interface CsvOrder {
   [key: string]: any
 }
@@ -359,7 +360,7 @@ async function findOpenCartId(customerId: number): Promise<number | null> {
    PRODUCT LOOKUP  (by reference)
 ===================================================== */
 
-async function getProductByReference(ref: string): Promise<{ id: number; price: number; name: string; reference: string } | null> {
+async function getProductByReference(ref: string): Promise<{ id: number; price: number; name: string; reference: string; xml: string } | null> {
   const res = await prestashop.get(
     `/products?filter[reference]=[${ref}]&display=full`
   )
@@ -377,7 +378,7 @@ async function getProductByReference(ref: string): Promise<{ id: number; price: 
   const refMatch = xml.match(/<reference><!\[CDATA\[(.*?)\]\]><\/reference>/)
   const reference = refMatch ? refMatch[1].trim() : ref
 
-  return { id: Number(idMatch[1]), price, name, reference }
+  return { id: Number(idMatch[1]), price, name, reference, xml }
 }
 
 /* =====================================================
@@ -659,7 +660,47 @@ async function updateOrderState(orderId: number, stateId: number) {
   await safePost("/order_histories", xml)
 }
 
+async function getTaxRateFromProduct(productXml: string): Promise<number> {
+  try {
+    // 1. extract tax rule group from product
+    const groupMatch = productXml.match(
+      /<id_tax_rules_group[^>]*>\s*<!\[CDATA\[(\d+)\]\]>/
+    )
 
+    if (!groupMatch) return 0
+
+    const groupId = Number(groupMatch[1])
+    if (!groupId) return 0
+
+    // 2. get tax rules for that group
+    const rulesRes = await prestashop.get(
+      `/tax_rules?filter[id_tax_rules_group]=[${groupId}]&display=full`
+    )
+
+    const rulesXml = rulesRes.data
+
+    // 3. extract tax ID (IMPORTANT: multiple rules possible → take first valid)
+    const taxIdMatch = rulesXml.match(
+      /<id_tax>\s*<!\[CDATA\[(\d+)\]\]>/
+    )
+
+    if (!taxIdMatch) return 0
+
+    const taxId = Number(taxIdMatch[1])
+
+    // 4. fetch tax
+    const taxRes = await prestashop.get(`/taxes/${taxId}`)
+
+    const rateMatch = taxRes.data.match(
+      /<rate>\s*<!\[CDATA\[(.*?)\]\]>/
+    )
+
+    return rateMatch ? parseFloat(rateMatch[1]) : 0
+  } catch (err) {
+    console.error("Tax fetch failed:", err)
+    return 0
+  }
+}
 
 /* =====================================================
    MAIN PROCESS
@@ -702,11 +743,7 @@ async function processRow(row: CsvOrder) {
 
   // ── Produits & Calcul du Total ─────────────────────
   const itemsRaw = parsePurchase(purchase)
-  if (!itemsRaw.length) {
-    console.log("👤 Client et adresse créés. Aucun article à importer.")
-    return { orderId: 0, type: 'customer' }
-  }
-
+  
   const cartItems: { productId: number; qty: number; attributeId: number; price: number; name: string; reference: string }[] = []
   let totalProducts = 0
 
@@ -714,10 +751,16 @@ async function processRow(row: CsvOrder) {
     const product = await getProductByReference(item.reference)
     if (!product) continue
 
+    // Récupération du taux de taxe depuis le produit
+    const taxRate = await getTaxRateFromProduct(product.xml)
+    const taxMultiplier = 1 + (taxRate / 100)
+
     const { id: attributeId, priceImpact } = await getProductAttributeId(product.id, item.attribute)
-    const finalUnitPrice = product.price + priceImpact
+    const unitPriceHT = product.price + priceImpact
+    const finalUnitPrice = unitPriceHT * taxMultiplier
     totalProducts += (finalUnitPrice * item.qty)
 
+    
     cartItems.push({
       productId: product.id,
       qty: item.qty,
@@ -728,9 +771,7 @@ async function processRow(row: CsvOrder) {
     })
   }
 
-  if (itemsRaw.length > 0 && !cartItems.length) {
-    throw new Error(`Aucun produit valide trouvé dans l'achat pour ${email}`)
-  }
+  if (!cartItems.length) throw new Error(`Panier vide pour ${email}`)
 
   // ── Panier ──────────────────────────────────────────
   // Si pas d'etat: on reutilise un panier ouvert. Si etat: on cree un nouveau panier pour isoler.
@@ -762,7 +803,7 @@ async function processRow(row: CsvOrder) {
 
   if (!hasEtat) {
     console.log("🛒 Pas d'état => Fin au panier:", cartId)
-    return { orderId: 0, type: 'cart' }
+    return 0
   }
 
   /**
@@ -781,8 +822,6 @@ async function processRow(row: CsvOrder) {
     orderDate
   )
 
-
-
   /**
    * ÉTAPE B : Forçage de la date de commande
    * Indispensable car PrestaShop écrase souvent la date au moment du POST.
@@ -794,11 +833,11 @@ async function processRow(row: CsvOrder) {
    * ÉTAPE C : Validation finale
    * On applique le vrai état et le vrai module.
    */
-  await updateOrderState(orderId, finalStateId, finalPayment)
+  // await updateOrderState(orderId, finalStateId)
 
   console.log(`✅ IMPORT RÉUSSI : Commande #${orderId} finalisée.`)
 
-  return { orderId, type: 'order' }
+  return orderId
 }
 /* =====================================================
    IMPORT LOOP
@@ -809,7 +848,6 @@ export interface ImportResult {
   email: string
   success: boolean
   orderId?: number
-  type?: 'order' | 'cart' | 'customer'
   error?: string
 }
 
@@ -825,10 +863,8 @@ export async function importOrders(
     let result: ImportResult
 
     try {
-      const res = await processRow(row)
-      const orderId = typeof res === 'number' ? res : (res as any).orderId
-      const type = typeof res === 'object' ? (res as any).type : (orderId > 0 ? 'order' : 'cart')
-      result = { row: done + 1, email, success: true, orderId, type }
+      const orderId = await processRow(row)
+      result = { row: done + 1, email, success: true, orderId }
     } catch (e: any) {
       const msg = e?.response?.data || e?.message || String(e)
       console.error(`❌ Row ${done + 1} failed [${email}]:`, msg)
