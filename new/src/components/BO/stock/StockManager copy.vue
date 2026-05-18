@@ -1,6 +1,6 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue';
-import { psGet, psPost } from '../../../utils/prestashop-api';
+import { psGet } from '../../../utils/prestashop-api';
 import {
     cleanId,
     getXmlText,
@@ -36,22 +36,6 @@ const evolutionLoading = ref(false);
 
 const selectedProductForEvolution = ref(null);
 const stockMovements = ref([]);
-
-/**
- * XML API HELPER TO CREATE STOCK DELTA
- */
-const psCreateStockDelta = async (productId, attributeId, delta) => {
-    const xml = `<?xml version="1.0" encoding="UTF-8"?>
-<prestashop xmlns:xlink="http://www.w3.org/1999/xlink">
-  <stock_delta>
-    <id_product>${productId}</id_product>
-    <id_product_attribute>${attributeId || 0}</id_product_attribute>
-    <delta>${delta}</delta>
-  </stock_delta>
-</prestashop>`;
-
-    return psPost('stock_deltas', xml);
-};
 
 /**
  * =========================================================
@@ -219,7 +203,7 @@ const productRows = computed(() => {
 
 /**
  * =========================================================
- * UPDATE QUANTITY (Persisted via stock_deltas POST)
+ * UPDATE QUANTITY
  * =========================================================
  */
 const updateQuantity = async (target, delta) => {
@@ -230,31 +214,26 @@ const updateQuantity = async (target, delta) => {
     const productId = target.id_product || target.id;
 
     try {
-        // Capper la quantité disponible pour éviter un stock négatif
-        const currentQty = target.quantity; // quantité disponible
-        const newQuantity = Math.max(0, currentQty + delta);
-        const actualDelta = newQuantity - currentQty;
+        // Nouvelle quantité disponible = quantité disponible actuelle + delta
+        const newQuantity = Math.max(0, target.quantity + delta);
 
-        if (actualDelta === 0) {
-            updatingId.value = null;
-            return;
-        }
+        await psUpdateStockQuantity(target.stockId, productId, attributeId, newQuantity);
 
-        // Créer l'entrée stock_delta via l'API webservice
-        await psCreateStockDelta(productId, attributeId, actualDelta);
-
-        // Mutation locale pour un affichage instantané fluide
+        // Mutation locale sécurisée après validation API
         const stockEntry = stocks.value.find(s => s.id === target.stockId);
         if (stockEntry) {
-            stockEntry.quantity = newQuantity;
-            stockEntry.physical_quantity = newQuantity + (stockEntry.reserved_quantity || 0);
+            const updatedPhysical = stockEntry.physical_quantity + delta;
+            stockEntry.physical_quantity = updatedPhysical < 0 ? 0 : updatedPhysical;
+            
+            const updatedAvailable = stockEntry.quantity + delta;
+            stockEntry.quantity = updatedAvailable < 0 ? 0 : updatedAvailable;
         }
 
         // Resynchronisation stricte depuis le serveur PrestaShop
         await refreshSingleStock(productId, attributeId);
 
     } catch (err) {
-        console.error('Erreur update stock delta:', err);
+        console.error('Erreur update stock:', err);
         alert(`Erreur mise à jour stock:\n${err.message}`);
     } finally {
         updatingId.value = null;
@@ -268,7 +247,7 @@ const handleManualInput = (event, target) => {
     const newValue = parseInt(event.target.value, 10);
 
     if (isNaN(newValue) || newValue < 0) {
-        event.target.value = target.physical_quantity;
+        event.target.value = target.quantity;
         return;
     }
 
@@ -332,89 +311,71 @@ const viewEvolution = async (productRow, attributeId = '0', displayName = '') =>
     stockMovements.value = [];
 
     try {
-        const correlatedMovements = [];
-
-        // 1. Récupérer les stock_deltas de manière sécurisée (ajustements manuels)
+        // 1. Récupérer les mouvements de stock de manière sécurisée
+        let filteredDeltas = [];
         try {
-            const deltasData = await psGet('stock_deltas', '', {
+            const deltasData = await psGet('stock_movements', '', {
                 [`filter[id_product]`]: productRow.id,
                 display: 'full'
             });
-            const rawDeltas = [].concat(deltasData?.prestashop?.stock_deltas?.stock_delta || []);
-            const filteredDeltas = rawDeltas.filter(m => cleanId(m.id_product_attribute || '0') === String(attributeId));
-
-            filteredDeltas.forEach(mvt => {
-                const delta = parseInt(getXmlText(mvt.delta) || '0', 10);
-                const mvtDate = getXmlText(mvt.date_add);
-                const reason = delta > 0 ? 'Ajustement positif (manuel)' : 'Ajustement négatif (manuel)';
-
-                correlatedMovements.push({
-                    id: `delta-${cleanId(mvt.id)}`,
-                    date: mvtDate,
-                    reason,
-                    change: Math.abs(delta),
-                    sign: delta > 0 ? 1 : -1,
-                    delta: delta
-                });
-            });
-        } catch (deltaErr) {
-            console.warn("Impossible de récupérer les deltas de stock:", deltaErr);
+            const rawDeltas = [].concat(deltasData?.prestashop?.stock_movements?.stock_movement || deltasData?.prestashop?.stock_mvts?.stock_mvt || []);
+            filteredDeltas = rawDeltas.filter(m => cleanId(m.id_product_attribute || '0') === String(attributeId));
+        } catch (mvtErr) {
+            console.warn("Impossible de récupérer les mouvements de stock:", mvtErr);
         }
 
-        // 2. Récupérer les mouvements issus des ventes (order_details)
+        // 1b. Charger les raisons de mouvement si disponibles
+        const movementReasonMap = {};
         try {
-            const detailsRes = await psGet('order_details', '', {
-                [`filter[product_id]`]: productRow.id,
-                display: 'full'
+            const reasonsData = await psGet('stock_movement_reasons', '', { display: '[id,name]' });
+            const rawReasons = [].concat(reasonsData?.prestashop?.stock_movement_reasons?.stock_movement_reason || []);
+            rawReasons.forEach(r => {
+                movementReasonMap[cleanId(r.id)] = extractText(r.name);
             });
-            const details = [].concat(detailsRes?.prestashop?.order_details?.order_detail || []);
-            const productDetails = details.filter(d => cleanId(d.product_attribute_id || '0') === String(attributeId));
-
-            const orderIds = [...new Set(productDetails.map(d => cleanId(d.id_order)))].filter(Boolean);
-
-            if (orderIds.length > 0) {
-                const filterIds = `[${orderIds.join('|')}]`;
-                const ordersRes = await psGet('orders', '', {
-                    [`filter[id]`]: filterIds,
-                    display: '[id,date_add,current_state]'
-                });
-                const rawOrders = [].concat(ordersRes?.prestashop?.orders?.order || []);
-                const ordersInfo = rawOrders.map(o => ({
-                    id: cleanId(o.id),
-                    date_add: getXmlText(o.date_add),
-                    current_state: cleanId(o.current_state)
-                }));
-
-                productDetails.forEach(d => {
-                    const orderId = cleanId(d.id_order);
-                    const ord = ordersInfo.find(o => o.id === orderId);
-                    if (!ord) return;
-
-                    const state = ord.current_state;
-                    const isCancelled = ['6', '7'].includes(state);
-                    const qty = parseInt(getXmlText(d.product_quantity) || '0', 10);
-
-                    correlatedMovements.push({
-                        id: `order-${cleanId(d.id) || orderId}`,
-                        date: ord.date_add,
-                        reason: `Vente (Commande #${orderId})${isCancelled ? ' - Annulée' : ''}`,
-                        change: qty,
-                        sign: -1,
-                        delta: -qty
-                    });
-                });
-            }
-        } catch (orderErr) {
-            console.warn("Impossible de récupérer les commandes associées:", orderErr);
+        } catch (reasonErr) {
+            console.warn("Impossible de récupérer les raisons de mouvement:", reasonErr);
         }
 
-        // 3. Trier tous les mouvements par date décroissante
+        // 2. Récupérer les mouvements issus des commandes
+
+        // Copie mutable des commandes pour le tracking des correspondances
+        const correlatedMovements = [];
+
+        // 3. Traiter les stock_deltas et chercher une correspondance avec les commandes
+        for (const mvt of filteredDeltas) {
+            const delta = parseInt(getXmlText(mvt.delta) || '0', 10);
+            const mvtDate = getXmlText(mvt.date_add);
+            const reasonId = cleanId(mvt.id_stock_movement_reason);
+            let reason = movementReasonMap[reasonId] || (delta > 0 ? 'Ajout manuel' : 'Retrait manuel');
+
+            if (delta < 0) {
+                const targetQty = Math.abs(delta);
+                const mvtTime = new Date(mvtDate).getTime();
+
+                let bestMatchIdx = -1;
+                let bestTimeDiff = Infinity;
+
+
+            }
+
+            correlatedMovements.push({
+                id: cleanId(mvt.id),
+                date: mvtDate,
+                reason,
+                change: Math.abs(delta),
+                sign: delta > 0 ? 1 : -1,
+                delta
+            });
+        }
+
+
+        // 5. Trier tous les mouvements par date décroissante
         correlatedMovements.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
-        // 4. Calculer les stocks cumulés à reculons à partir de la quantité physique actuelle
+        // 6. Calculer les stocks cumulés à reculons à partir de la quantité actuelle
         const targetStock = attributeId === '0'
-            ? productRow.physical_quantity
-            : (productRow.children.find(c => c.id === attributeId)?.physical_quantity || 0);
+            ? productRow.quantity
+            : (productRow.children.find(c => c.id === attributeId)?.quantity || 0);
 
         let rollingQty = targetStock;
         const processed = correlatedMovements.map(mvt => {
@@ -430,7 +391,7 @@ const viewEvolution = async (productRow, attributeId = '0', displayName = '') =>
             };
         });
 
-        // 5. Déterminer la date d'initialisation (available_date, sinon date_add)
+        // 7. Déterminer la date d'initialisation (available_date, sinon date_add)
         const getValidAvailabilityDate = (row) => {
             const date = row?.available_date;
             if (date && date !== '0000-00-00 00:00:00' && date !== '0000-00-00' && date.trim() !== '') {
@@ -445,10 +406,10 @@ const viewEvolution = async (productRow, attributeId = '0', displayName = '') =>
         processed.push({
             id: 'initial',
             date: creationDate,
-            reason: 'Stock historique initial',
-            change: Math.max(0, rollingQty),
+            reason: 'Stock historique',
+            change: rollingQty,
             sign: 1,
-            quantity: Math.max(0, rollingQty)
+            quantity: rollingQty
         });
 
         stockMovements.value = processed;
@@ -528,16 +489,11 @@ onMounted(() => {
                                         <div class="d-flex flex-column align-items-center gap-1">
                                             <span class="badge px-3 py-2 fs-6 shadow-sm border border-2"
                                                 :class="product.physical_quantity > 5 ? 'bg-success border-success-subtle' : (product.physical_quantity > 0 ? 'bg-warning border-warning-subtle text-dark' : 'bg-danger border-danger-subtle')">
-                                                <i class="bi bi-box-seam me-1"></i> {{ product.physical_quantity }} {{
-                                                    product.hasCombinations ? 'Total' : '' }}
+                                                <i class="bi bi-box-seam me-1"></i> {{ product.physical_quantity }} {{ product.hasCombinations ? 'Total' : '' }}
                                             </span>
-                                            <div class="d-flex gap-2 justify-content-center mt-1"
-                                                style="font-size:0.72rem;">
-                                                <span
-                                                    class="text-secondary bg-secondary-subtle px-2 py-0.5 rounded">Dispo
-                                                    : {{ product.quantity }}</span>
-                                                <span class="text-info bg-info-subtle px-2 py-0.5 rounded">Réservé : {{
-                                                    product.reserved_quantity }}</span>
+                                            <div class="d-flex gap-2 justify-content-center mt-1" style="font-size:0.72rem;">
+                                                <span class="text-secondary bg-secondary-subtle px-2 py-0.5 rounded">Dispo : {{ product.quantity }}</span>
+                                                <span class="text-info bg-info-subtle px-2 py-0.5 rounded">Réservé : {{ product.reserved_quantity }}</span>
                                             </div>
                                         </div>
                                     </td>
@@ -556,9 +512,8 @@ onMounted(() => {
                                             <!-- INPUT SÉCURISÉ MÈRE -->
                                             <input type="number"
                                                 class="form-control form-control-sm text-center mx-2 manual-qty-input"
-                                                :value="product.physical_quantity"
-                                                :disabled="updatingId === product.stockId" min="0"
-                                                @keydown.enter.prevent="handleManualInput($event, product)"
+                                                :value="product.physical_quantity" :disabled="updatingId === product.stockId"
+                                                min="0" @keydown.enter.prevent="handleManualInput($event, product)"
                                                 @keydown.esc="handleResetInput($event, product.physical_quantity)"
                                                 @blur="handleManualInput($event, product)" />
 
@@ -604,13 +559,9 @@ onMounted(() => {
                                                     :class="child.physical_quantity > 5 ? 'bg-success border-success-subtle' : (child.physical_quantity > 0 ? 'bg-warning border-warning-subtle text-dark' : 'bg-danger border-danger-subtle')">
                                                     <i class="bi bi-box-seam me-1"></i> {{ child.physical_quantity }}
                                                 </span>
-                                                <div class="d-flex gap-2 justify-content-center mt-1"
-                                                    style="font-size:0.72rem;">
-                                                    <span
-                                                        class="text-secondary bg-secondary-subtle px-2 py-0.5 rounded">Dispo
-                                                        : {{ child.quantity }}</span>
-                                                    <span class="text-info bg-info-subtle px-2 py-0.5 rounded">Réservé :
-                                                        {{ child.reserved_quantity }}</span>
+                                                <div class="d-flex gap-2 justify-content-center mt-1" style="font-size:0.72rem;">
+                                                    <span class="text-secondary bg-secondary-subtle px-2 py-0.5 rounded">Dispo : {{ child.quantity }}</span>
+                                                    <span class="text-info bg-info-subtle px-2 py-0.5 rounded">Réservé : {{ child.reserved_quantity }}</span>
                                                 </div>
                                             </div>
                                         </td>
@@ -629,8 +580,8 @@ onMounted(() => {
                                                 <!-- INPUT SÉCURISÉ ENFANT -->
                                                 <input type="number"
                                                     class="form-control form-control-sm text-center mx-2 manual-qty-input"
-                                                    :value="child.physical_quantity"
-                                                    :disabled="updatingId === child.stockId" min="0"
+                                                    :value="child.physical_quantity" :disabled="updatingId === child.stockId"
+                                                    min="0"
                                                     @keydown.enter.prevent="handleManualInput($event, { ...child, id_product: product.id })"
                                                     @keydown.esc="handleResetInput($event, child.physical_quantity)"
                                                     @blur="handleManualInput($event, { ...child, id_product: product.id })" />

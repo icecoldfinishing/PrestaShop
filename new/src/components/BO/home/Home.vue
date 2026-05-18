@@ -24,6 +24,7 @@ const allOrders = ref([]);
 const customersMap = ref({});
 const statesMap = ref({});
 const selectedDate = ref(''); // Vide = tous
+const selectedState = ref(''); // Vide = tous
 
 const formatMoney = (n) => {
     const v = Number(n) || 0;
@@ -98,9 +99,25 @@ const getStateName = (id) => statesMap.value[id] || `Statut #${id}`;
 
 
 const filteredOrders = computed(() => {
-    if (!selectedDate.value) return allOrders.value;
-    // On compare YYYY-MM-DD
-    return allOrders.value.filter(o => o.date_add.startsWith(selectedDate.value));
+    let result = allOrders.value;
+    if (selectedDate.value) {
+        result = result.filter(o => o.date_add.startsWith(selectedDate.value));
+    }
+    if (selectedState.value) {
+        result = result.filter(o => String(o.current_state) === String(selectedState.value));
+    }
+    return result;
+});
+
+const filteredTotals = computed(() => {
+    const totals = filteredOrders.value.reduce((acc, order) => {
+        acc.count += 1;
+        acc.amount += Number(order.total_paid) || 0;
+        return acc;
+    }, { count: 0, amount: 0 });
+    
+    totals.average = totals.count > 0 ? totals.amount / totals.count : 0;
+    return totals;
 });
 
 // Grouper les commandes par date pour l'affichage
@@ -135,7 +152,40 @@ onMounted(() => {
                 Gestion de la boutique et suivi des commandes
             </p>
         </div>
+        <!-- QUICK ACTIONS -->
+        <div class="mb-4">
+            <h4 class="mb-3 fw-bold">Outils rapides</h4>
 
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <div
+                        class="card h-100 shadow-sm border-0 cursor-pointer"
+                        @click="emit('navigate', 'csv-import')"
+                    >
+                        <div class="card-body">
+                            <h5 class="fw-bold text-success">CSV Import</h5>
+                            <p class="text-muted mb-0">
+                                Importer des données via CSV
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-md-6">
+                    <div
+                        class="card h-100 shadow-sm border-0 cursor-pointer"
+                        @click="emit('navigate', 'data-reset')"
+                    >
+                        <div class="card-body">
+                            <h5 class="fw-bold text-danger">Data Reset</h5>
+                            <p class="text-muted mb-0">
+                                Réinitialiser les données
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
         <!-- STATS -->
         <div class="row g-4 mb-5">
             <div class="col-md-4">
@@ -182,16 +232,27 @@ onMounted(() => {
 
         <!-- TABLEAU DE BORD COMMANDES -->
         <div class="card shadow-sm border-0 mb-5">
-            <div class="card-header bg-white border-bottom py-3 d-flex justify-content-between align-items-center">
+            <div class="card-header bg-white border-bottom py-3 d-flex justify-content-between align-items-center flex-wrap gap-3">
                 <h4 class="mb-0 fw-bold">Détail des commandes</h4>
                 
-                <div class="d-flex align-items-center gap-2">
-                    <label class="small text-muted fw-semibold">Filtrer par date :</label>
-                    <div class="input-group input-group-sm" style="width: auto;">
-                        <input v-model="selectedDate" type="date" class="form-control" />
-                        <button v-if="selectedDate" class="btn btn-outline-secondary" @click="selectedDate = ''">
-                            <i class="bi bi-x"></i>
-                        </button>
+                <div class="d-flex align-items-center gap-3 flex-wrap">
+                    <div class="d-flex align-items-center gap-2">
+                        <label class="small text-muted fw-semibold">Statut :</label>
+                        <select v-model="selectedState" class="form-select form-select-sm" style="width: auto; min-width: 150px;">
+                            <option value="">Tous les statuts</option>
+                            <option v-for="(name, id) in statesMap" :key="id" :value="id">
+                                {{ name }}
+                            </option>
+                        </select>
+                    </div>
+                    <div class="d-flex align-items-center gap-2">
+                        <label class="small text-muted fw-semibold">Filtrer par date :</label>
+                        <div class="input-group input-group-sm" style="width: auto;">
+                            <input v-model="selectedDate" type="date" class="form-control" />
+                            <button v-if="selectedDate" class="btn btn-outline-secondary" @click="selectedDate = ''">
+                                <i class="bi bi-x"></i>
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -205,6 +266,34 @@ onMounted(() => {
                 </div>
                 <template v-else>
                     
+                    <!-- Metrics Summary -->
+                    <div class="row mb-4 g-3">
+                        <div class="col-md-4">
+                            <div class="card bg-light border-0 h-100 shadow-sm">
+                                <div class="card-body text-center d-flex flex-column justify-content-center py-4">
+                                    <h6 class="text-muted mb-2 text-uppercase fw-semibold"><i class="bi bi-receipt me-2"></i>Commandes</h6>
+                                    <h3 class="mb-0 fw-bold">{{ filteredTotals.count }}</h3>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="card bg-success-subtle border-0 h-100 shadow-sm">
+                                <div class="card-body text-center d-flex flex-column justify-content-center py-4">
+                                    <h6 class="text-success-emphasis mb-2 text-uppercase fw-semibold"><i class="bi bi-currency-euro me-2"></i>Valeur générée</h6>
+                                    <h3 class="mb-0 fw-bold text-success">{{ formatMoney(filteredTotals.amount) }} €</h3>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="card bg-primary-subtle border-0 h-100 shadow-sm">
+                                <div class="card-body text-center d-flex flex-column justify-content-center py-4">
+                                    <h6 class="text-primary-emphasis mb-2 text-uppercase fw-semibold"><i class="bi bi-cart me-2"></i>Panier moyen</h6>
+                                    <h3 class="mb-0 fw-bold text-primary">{{ formatMoney(filteredTotals.average) }} €</h3>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                     <div class="table-responsive">
                         <table class="table align-middle mb-0">
                             <thead class="table-light">
@@ -254,10 +343,10 @@ onMounted(() => {
                                     </td>
                                 </tr>
                             </tbody>
-                            <tfoot v-if="!selectedDate && groupedOrders.length" class="table-group-divider">
+                            <tfoot v-if="groupedOrders.length" class="table-group-divider">
                                 <tr class="fw-bold">
-                                    <td colspan="3">Cumul total</td>
-                                    <td class="text-end text-primary">{{ formatMoney(ordersTotals.amount) }} €</td>
+                                    <td colspan="3">Total affiché</td>
+                                    <td class="text-end text-success">{{ formatMoney(filteredTotals.amount) }} €</td>
                                     <td></td>
                                 </tr>
                             </tfoot>
@@ -267,40 +356,7 @@ onMounted(() => {
             </div>
         </div>
 
-        <!-- QUICK ACTIONS -->
-        <div class="mb-4">
-            <h4 class="mb-3 fw-bold">Outils rapides</h4>
-
-            <div class="row g-3">
-                <div class="col-md-6">
-                    <div
-                        class="card h-100 shadow-sm border-0 cursor-pointer"
-                        @click="emit('navigate', 'csv-import')"
-                    >
-                        <div class="card-body">
-                            <h5 class="fw-bold text-success">CSV Import</h5>
-                            <p class="text-muted mb-0">
-                                Importer des données via CSV
-                            </p>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="col-md-6">
-                    <div
-                        class="card h-100 shadow-sm border-0 cursor-pointer"
-                        @click="emit('navigate', 'data-reset')"
-                    >
-                        <div class="card-body">
-                            <h5 class="fw-bold text-danger">Data Reset</h5>
-                            <p class="text-muted mb-0">
-                                Réinitialiser les données
-                            </p>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
+        
     </div>
 </template>
 

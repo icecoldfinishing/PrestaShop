@@ -8,11 +8,6 @@ export default defineConfig({
       '/api': {
         target: 'http://localhost:8088',
         changeOrigin: true,
-      }, 
-      '/api-stock': {
-        target: 'http://localhost:8088/stock-update.php',
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api-stock/, '/stock-update.php')
       }
     }
   }

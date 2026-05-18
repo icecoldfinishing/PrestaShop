@@ -45,8 +45,8 @@ export async function psGetOrdersLight() {
   const data = await psGet('orders', '', {
     display: '[id,total_paid,date_add,current_state,id_customer]',
     // CORRECTION : On filtre sur l'état 2 OU 10 OU 11
-    // 06 annule
-    'filter[current_state]': '[2|10|11]',
+    // 06 annule et 05 livré
+    'filter[current_state]': '[2|10|11|06|05]',
     sort: '[id_DESC]'
   });
   const raw = data?.prestashop?.orders?.order;
@@ -188,6 +188,42 @@ export async function psUpdateOrderState(orderId, stateId) {
   });
 
   return psPost("order_histories", xmlData);
+}
+
+export const psUpdateOrderStateCustom = async (orderId, stateId) => {
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<prestashop>
+  <order_state_update>
+    <id_order>${orderId}</id_order>
+    <id_order_state>${stateId}</id_order_state>
+  </order_state_update>
+</prestashop>`;
+
+  try {
+    const response = await axios.post(
+      `${BASE_URL}/order_state_update?ws_key=${API_KEY}`,
+      xml,
+      {
+        headers: {
+          'Content-Type': 'application/xml',
+          Accept: 'application/xml',
+        },
+      }
+    );
+
+    console.log(
+      `✅ État commande #${orderId} changé vers ${stateId}`,
+      response.data
+    );
+
+    return response.data;
+  } catch (error) {
+    console.error(
+      `❌ Erreur changement état commande #${orderId}:`,
+      error?.response?.data || error.message
+    );
+    throw error;
+  }
 }
 
 export function getXmlText(value) {
@@ -956,4 +992,33 @@ export async function psUpdateCart(cartId, customerId, items, addressId) {
 
   console.log(`PUT Cart #${cartId} XML Preview:`, cartXml.substring(0, 800));
   return psPut(`carts/${cartId}`, cartXml);
+}
+
+/**
+ * Met à jour la quantité disponible d'un stock dans PrestaShop (via PUT stock_availables).
+ * 
+ * @param {string|number} stockId
+ * @param {string|number} productId
+ * @param {string|number} productAttributeId
+ * @param {number} newQuantity
+ * @returns {Promise<any>}
+ */
+export async function psUpdateStockQuantity(stockId, productId, productAttributeId, newQuantity) {
+  if (!stockId) throw new Error("Stock ID requis.");
+
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<prestashop xmlns:xlink="http://www.w3.org/1999/xlink">
+  <stock_available>
+    <id>${stockId}</id>
+    <id_product>${productId}</id_product>
+    <id_product_attribute>${productAttributeId || 0}</id_product_attribute>
+    <quantity>${newQuantity}</quantity>
+    <id_shop>1</id_shop>
+    <id_shop_group>0</id_shop_group>
+    <depends_on_stock>0</depends_on_stock>
+    <out_of_stock>2</out_of_stock>
+  </stock_available>
+</prestashop>`;
+
+  return psPut(`stock_availables/${stockId}`, xml);
 }
