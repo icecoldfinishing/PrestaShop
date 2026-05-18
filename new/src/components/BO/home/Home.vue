@@ -135,7 +135,40 @@ onMounted(() => {
                 Gestion de la boutique et suivi des commandes
             </p>
         </div>
+        <!-- QUICK ACTIONS -->
+        <div class="mb-4">
+            <h4 class="mb-3 fw-bold">Outils rapides</h4>
 
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <div
+                        class="card h-100 shadow-sm border-0 cursor-pointer"
+                        @click="emit('navigate', 'csv-import')"
+                    >
+                        <div class="card-body">
+                            <h5 class="fw-bold text-success">CSV Import</h5>
+                            <p class="text-muted mb-0">
+                                Importer des données via CSV
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-md-6">
+                    <div
+                        class="card h-100 shadow-sm border-0 cursor-pointer"
+                        @click="emit('navigate', 'data-reset')"
+                    >
+                        <div class="card-body">
+                            <h5 class="fw-bold text-danger">Data Reset</h5>
+                            <p class="text-muted mb-0">
+                                Réinitialiser les données
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
         <!-- STATS -->
         <div class="row g-4 mb-5">
             <div class="col-md-4">
@@ -267,40 +300,7 @@ onMounted(() => {
             </div>
         </div>
 
-        <!-- QUICK ACTIONS -->
-        <div class="mb-4">
-            <h4 class="mb-3 fw-bold">Outils rapides</h4>
-
-            <div class="row g-3">
-                <div class="col-md-6">
-                    <div
-                        class="card h-100 shadow-sm border-0 cursor-pointer"
-                        @click="emit('navigate', 'csv-import')"
-                    >
-                        <div class="card-body">
-                            <h5 class="fw-bold text-success">CSV Import</h5>
-                            <p class="text-muted mb-0">
-                                Importer des données via CSV
-                            </p>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="col-md-6">
-                    <div
-                        class="card h-100 shadow-sm border-0 cursor-pointer"
-                        @click="emit('navigate', 'data-reset')"
-                    >
-                        <div class="card-body">
-                            <h5 class="fw-bold text-danger">Data Reset</h5>
-                            <p class="text-muted mb-0">
-                                Réinitialiser les données
-                            </p>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
+        
     </div>
 </template>
 

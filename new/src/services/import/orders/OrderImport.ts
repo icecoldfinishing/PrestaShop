@@ -32,7 +32,7 @@ const getCleanPaymentMethod = (row: any) => {
   if (etat.includes("chèque") || etat.includes("cheque") || etat.includes("check")) {
     return "Cheque";
   }
-  return "Paiement par virement bancaire"; 
+  return "Paiement par virement bancaire";
 };
 
 /* =====================================================
@@ -52,7 +52,7 @@ const getCleanPaymentMethod = (row: any) => {
 
 function mapEtatToOrderData(etat: string) {
   const s = etat.toLowerCase().trim();
-  
+
   // Initialisation des données par défaut (Virement)
   let stateId = 2; // Paiement accepté par défaut
   let payment = { module: 'ps_wirepayment', label: 'Virement bancaire' };
@@ -72,12 +72,12 @@ function mapEtatToOrderData(etat: string) {
   // 2. Ajustement de l'ID d'état selon l'avancement (écrase le défaut si nécessaire)
   if (s.includes("préparation") || s.includes("cours")) stateId = 3;
   if (s.includes("expé") || s.includes("route")) stateId = 4;
-  if (s.includes("livré")) stateId = 5;
+  if (s.includes("livr")) stateId = 5;
   if (s.includes("annul")) stateId = 6;
   if (s.includes("rembours")) stateId = 7;
   if (s.includes("erreur") || s.includes("error") || s.includes("échec")) stateId = 8;
   if (s.includes("attente")) stateId = 14;
-  if (s === "payé" || s.includes("accept")) stateId = 2;
+  if (s === "payé" || s.includes("accept") || s.includes("effectue") || s.includes("effectué")) stateId = 2;
 
   return { stateId, payment };
 }
@@ -595,7 +595,7 @@ async function createOrder(
   totalProducts: number,
   secureKey: string,
   items: { productId: number; qty: number; attributeId: number; price: number; name: string; reference: string }[],
-  orderDate: string 
+  orderDate: string
 ) {
   const tp = totalProducts.toFixed(6);
   const totalPaidReal = (stateId === 2 || stateId === 5 || stateId === 11) ? tp : "0.000000";
@@ -615,7 +615,7 @@ async function createOrder(
       </order_row>`;
   }
 
-  const fullDate = `${orderDate} 10:00:00`; 
+  const fullDate = `${orderDate} 10:00:00`;
 
   const xml = `
 <prestashop>
@@ -743,7 +743,7 @@ async function processRow(row: CsvOrder) {
 
   // ── Produits & Calcul du Total ─────────────────────
   const itemsRaw = parsePurchase(purchase)
-  
+
   const cartItems: { productId: number; qty: number; attributeId: number; price: number; name: string; reference: string }[] = []
   let totalProducts = 0
 
@@ -760,7 +760,7 @@ async function processRow(row: CsvOrder) {
     const finalUnitPrice = unitPriceHT * taxMultiplier
     totalProducts += (finalUnitPrice * item.qty)
 
-    
+
     cartItems.push({
       productId: product.id,
       qty: item.qty,
@@ -814,8 +814,8 @@ async function processRow(row: CsvOrder) {
     cartId,
     customerId,
     addressId,
-    10, 
-    { module: "ps_checkpayment", label: "Import Initial" }, 
+    10,
+    { module: "ps_checkpayment", label: "Import Initial" },
     totalProducts,
     secureKey,
     cartItems,
@@ -833,7 +833,7 @@ async function processRow(row: CsvOrder) {
    * ÉTAPE C : Validation finale
    * On applique le vrai état et le vrai module.
    */
-  // await updateOrderState(orderId, finalStateId)
+  await updateOrderState(orderId, finalStateId)
 
   console.log(`✅ IMPORT RÉUSSI : Commande #${orderId} finalisée.`)
 
@@ -848,6 +848,7 @@ export interface ImportResult {
   email: string
   success: boolean
   orderId?: number
+  type?: 'order' | 'cart' | 'customer' | 'other'
   error?: string
 }
 
@@ -864,7 +865,7 @@ export async function importOrders(
 
     try {
       const orderId = await processRow(row)
-      result = { row: done + 1, email, success: true, orderId }
+      result = { row: done + 1, email, success: true, orderId, type: orderId ? 'order' : 'cart' }
     } catch (e: any) {
       const msg = e?.response?.data || e?.message || String(e)
       console.error(`❌ Row ${done + 1} failed [${email}]:`, msg)

@@ -1,7 +1,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue';
 import axios from 'axios';
-import {  psGet } from '../../../utils/prestashop-api';
+import { psGet } from '../../../utils/prestashop-api';
 import { getXmlText, psUpdateOrderState, psEnsureCustomerAddress, psGetCartSecureKey, psCreateOrder, psLoadCartItems } from '../../../utils/products/product-api';
 
 /* ─────────────────────────────────────────
@@ -18,11 +18,11 @@ const addLog = (msg) => {
 /* ─────────────────────────────────────────
    STATE
 ───────────────────────────────────────── */
-const orders        = ref([]);
-const carts         = ref([]);
-const orderStates   = ref([]);
-const loading       = ref(false);
-const updatingId    = ref(null);
+const orders = ref([]);
+const carts = ref([]);
+const orderStates = ref([]);
+const loading = ref(false);
+const updatingId = ref(null);
 const orderStateMap = ref({});
 const customersMap = ref({});
 /* ─────────────────────────────────────────
@@ -31,7 +31,7 @@ const customersMap = ref({});
    C'est un flag interne qui déclenche DELETE /orders/{id}.
 ───────────────────────────────────────── */
 const CART_SENTINEL = '__cart__';
-const isCartAction  = (v) => v === CART_SENTINEL;
+const isCartAction = (v) => v === CART_SENTINEL;
 
 /* ─────────────────────────────────────────
    DELETE commande via axios.delete
@@ -39,7 +39,7 @@ const isCartAction  = (v) => v === CART_SENTINEL;
    axios.GET — il ne supporte pas DELETE.
    On appelle directement axios ici.
 ───────────────────────────────────────── */
-const API_KEY  = import.meta.env.VITE_PRESTASHOP_API_KEY;
+const API_KEY = import.meta.env.VITE_PRESTASHOP_API_KEY;
 const BASE_URL = import.meta.env.VITE_PRESTASHOP_BASE_URL || '/api';
 
 const deleteOrder = async (orderId) => {
@@ -54,7 +54,7 @@ const deleteOrder = async (orderId) => {
 /* ─────────────────────────────────────────
    HELPERS
 ───────────────────────────────────────── */
-const normalize    = (v) => String(v || '').trim().toLowerCase();
+const normalize = (v) => String(v || '').trim().toLowerCase();
 const getStateName = (state) => {
     const name = state?.name?.language;
     return Array.isArray(name) ? getXmlText(name[0]) : getXmlText(name);
@@ -69,7 +69,7 @@ const getAllOrders = async () => {
     });
 
     const list = data?.prestashop?.orders?.order;
-    const arr  = list ? (Array.isArray(list) ? list : [list]) : [];
+    const arr = list ? (Array.isArray(list) ? list : [list]) : [];
 
     const customerIds = [...new Set(arr.map(o => getXmlText(o.id_customer)))]
         .filter(id => id && id !== '0');
@@ -92,7 +92,7 @@ const getAllOrders = async () => {
     });
 
     orders.value = arr.map(o => {
-        const id    = String(o.id);
+        const id = String(o.id);
         const state = getXmlText(o.current_state);
 
         orderStateMap.value[`order-${id}`] = state;
@@ -122,8 +122,8 @@ const getAllOrders = async () => {
 ───────────────────────────────────────── */
 const getAllCarts = async () => {
     const data = await psGet('carts', '', { display: 'full' });
-    const list  = data?.prestashop?.carts?.cart;
-    const arr   = list ? (Array.isArray(list) ? list : [list]) : [];
+    const list = data?.prestashop?.carts?.cart;
+    const arr = list ? (Array.isArray(list) ? list : [list]) : [];
 
     const orderCartIds = orders.value.map(o => String(o.id_cart)).filter(Boolean);
 
@@ -132,10 +132,10 @@ const getAllCarts = async () => {
             .filter(c => {
                 // 1. Éviter les paniers déjà liés à une commande
                 const notInOrder = !orderCartIds.includes(String(c.id));
-                
+
                 // 2. Vérification stricte de l'id_customer
                 const customerId = String(getXmlText(c.id_customer) || '').trim();
-                
+
                 // Récupération sécurisée des données de base du client si elles existent dans l'objet panier
                 const fname = getXmlText(c.firstname);
                 const lname = getXmlText(c.lastname);
@@ -161,11 +161,11 @@ const getAllCarts = async () => {
 
                 return {
                     id,
-                    type:          'cart',
-                    id_customer:   getXmlText(c.id_customer),
-                    total_paid:    total.toFixed(2),
+                    type: 'cart',
+                    id_customer: getXmlText(c.id_customer),
+                    total_paid: total.toFixed(2),
                     current_state: CART_SENTINEL,
-                    date_add:      getXmlText(c.date_add),
+                    date_add: getXmlText(c.date_add),
                 };
             })
     );
@@ -181,7 +181,7 @@ const getAllCarts = async () => {
 const getAllOrderStates = async () => {
     const data = await psGet('order_states', '', { display: 'full' });
     const list = data?.prestashop?.order_states?.order_state;
-    const arr  = list ? (Array.isArray(list) ? list : [list]) : [];
+    const arr = list ? (Array.isArray(list) ? list : [list]) : [];
     orderStates.value = arr.map(s => ({ id: String(s.id), name: getStateName(s) }));
 };
 
@@ -191,8 +191,9 @@ const findStateId = (keywords) =>
     )?.id || null;
 
 /* IDs réels PrestaShop — strings numériques ou null */
-const paidStateId     = computed(() => findStateId(['paiement accepté', 'payment accepted', 'paid']));
+const paidStateId = computed(() => findStateId(['paiement accepté', 'payment accepted', 'paid']));
 const canceledStateId = computed(() => findStateId(['annulé', 'cancel', 'canceled', 'annule']));
+const deliveredStateId = computed(() => findStateId(['livré', 'livre', 'delivered']) || '5');
 
 /* ─────────────────────────────────────────
    ACTION PRINCIPALE
@@ -224,22 +225,22 @@ const setOrderState = async (id, type, stateId) => {
             addLog(`📍 adresse=${addressId}`);
 
             const secureKey = await psGetCartSecureKey(id);
-            const items     = await psLoadCartItems(id);
+            const items = await psLoadCartItems(id);
             addLog(`📥 ${items.length} article(s)`);
 
             const newOrderId = await psCreateOrder({
-                cartId:     id,
+                cartId: id,
                 customerId: cartObj.id_customer,
-                addressId:  addressId || 1,
+                addressId: addressId || 1,
                 secureKey,
-                lineItems:  items.map(i => ({
-                    productId:          i.id,
+                lineItems: items.map(i => ({
+                    productId: i.id,
                     productAttributeId: i.id_attribute ?? 0,
-                    quantity:           i.quantity,
-                    name:               i.name,
-                    reference:          i.reference || '',
-                    unitPriceTaxIncl:   Number(i.price) || 0,
-                    unitPriceTaxExcl:   Number(i.price) || 0,
+                    quantity: i.quantity,
+                    name: i.name,
+                    reference: i.reference || '',
+                    unitPriceTaxIncl: Number(i.price) || 0,
+                    unitPriceTaxExcl: Number(i.price) || 0,
                 })),
             });
             addLog(`✅ Commande #${newOrderId} créée`);
@@ -297,9 +298,10 @@ const setOrderState = async (id, type, stateId) => {
 ───────────────────────────────────────── */
 const getActiveStateId = (id, type) => orderStateMap.value[`${type}-${id}`] || null;
 
-const isPaid     = (id, type) => getActiveStateId(id, type) === paidStateId.value;
+const isPaid = (id, type) => getActiveStateId(id, type) === paidStateId.value;
 const isCanceled = (id, type) => getActiveStateId(id, type) === canceledStateId.value;
-const isCart     = (id, type) => {
+const isDelivered = (id, type) => getActiveStateId(id, type) === deliveredStateId.value;
+const isCart = (id, type) => {
     const s = getActiveStateId(id, type);
     return !s || isCartAction(s) || type === 'cart';
 };
@@ -341,7 +343,7 @@ onMounted(async () => {
 
         <!-- ===== LOG PANEL ===== -->
         <div class="mb-4 p-3 rounded"
-             style="background:#111;color:#0f0;font-family:monospace;font-size:11px;height:180px;overflow-y:auto;">
+            style="background:#111;color:#0f0;font-family:monospace;font-size:11px;height:180px;overflow-y:auto;">
             <div v-if="!logs.length" style="color:#555">Logs apparaîtront ici…</div>
             <div v-for="(l, i) in logs" :key="i">{{ l }}</div>
         </div>
@@ -355,7 +357,7 @@ onMounted(async () => {
             <div class="col" v-for="item in allItems" :key="item.type + item.id">
 
                 <div class="card h-100 shadow-sm border-0"
-                     :class="{ 'opacity-50': updatingId === `${item.type}-${item.id}` }">
+                    :class="{ 'opacity-50': updatingId === `${item.type}-${item.id}` }">
                     <div class="card-body">
 
                         <h5 class="fw-bold">
@@ -379,8 +381,13 @@ onMounted(async () => {
                                 Sur une commande → déclenche CAS C (DELETE).
                                 Sur un panier   → désactivé (déjà panier).
                             -->
-                            <button
-                                class="btn btn-sm"
+                            <button class="btn btn-sm"
+                                :class="isCanceled(item.id, item.type) ? 'btn-danger' : 'btn-outline-danger'"
+                                :disabled="updatingId === `${item.type}-${item.id}`"
+                                @click="setOrderState(item.id, item.type, canceledStateId)">
+                                Annulé
+                            </button>
+                            <button class="btn btn-sm"
                                 :class="isCart(item.id, item.type) ? 'btn-secondary' : 'btn-outline-secondary'"
                                 :disabled="updatingId === `${item.type}-${item.id}` || isCart(item.id, item.type)"
                                 :title="item.type === 'order' ? 'Supprime la commande et libère le panier' : 'Déjà un panier'"
@@ -388,34 +395,31 @@ onMounted(async () => {
                                 Panier
                             </button>
 
-                            <button
-                                class="btn btn-sm"
+                            <button class="btn btn-sm"
                                 :class="isPaid(item.id, item.type) ? 'btn-success' : 'btn-outline-success'"
                                 :disabled="updatingId === `${item.type}-${item.id}`"
                                 @click="setOrderState(item.id, item.type, paidStateId)">
                                 Payé
                             </button>
 
-                            <button
-                                class="btn btn-sm"
-                                :class="isCanceled(item.id, item.type) ? 'btn-danger' : 'btn-outline-danger'"
+                            <button class="btn btn-sm"
+                                :class="isDelivered(item.id, item.type) ? 'btn-primary' : 'btn-outline-primary'"
                                 :disabled="updatingId === `${item.type}-${item.id}`"
-                                @click="setOrderState(item.id, item.type, canceledStateId)">
-                                Annulé
+                                @click="setOrderState(item.id, item.type, deliveredStateId)">
+                                Livré
                             </button>
 
                         </div>
 
                         <!-- DROPDOWN -->
                         <div class="mt-2">
-                            <select
-                                class="form-select form-select-sm"
-                                :value="getActiveStateId(item.id, item.type)"
+                            <select class="form-select form-select-sm" :value="getActiveStateId(item.id, item.type)"
                                 :disabled="updatingId === `${item.type}-${item.id}`"
                                 @change="setOrderState(item.id, item.type, $event.target.value)">
                                 <option value="">— Changer le statut —</option>
                                 <option :value="CART_SENTINEL">Panier (supprime la commande)</option>
                                 <option :value="paidStateId">Paiement accepté</option>
+                                <option :value="deliveredStateId">Livré</option>
                                 <option :value="canceledStateId">Annulé</option>
                             </select>
                         </div>
