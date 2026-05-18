@@ -1,5 +1,11 @@
 import prestashop from "../../prestashop"
+import { cleanId, getXmlText } from "../../../utils/products/product-api";
+import { psUpdateStockByDelta } from "../../../utils/stocks/stock-api";
+import axios from "axios";
 
+
+const API_KEY = import.meta.env.VITE_PRESTASHOP_API_KEY;
+const BASE_URL = import.meta.env.VITE_PRESTASHOP_BASE_URL || '/api';
 
 export interface CsvOrder {
   [key: string]: any
@@ -650,16 +656,40 @@ async function createOrder(
 }
 
 async function updateOrderState(orderId: number, stateId: number) {
-  const xml = `
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <prestashop>
-  <order_history>
+  <order_state_update>
     <id_order>${orderId}</id_order>
     <id_order_state>${stateId}</id_order_state>
-  </order_history>
-</prestashop>`
-  await safePost("/order_histories", xml)
-}
+  </order_state_update>
+</prestashop>`;
 
+  try {
+    const response = await axios.post(
+      `${BASE_URL}/order_state_update?ws_key=${API_KEY}`,
+      xml,
+      {
+        headers: {
+          'Content-Type': 'application/xml',
+          Accept: 'application/xml',
+        },
+      }
+    );
+
+    console.log(
+      `✅ État commande #${orderId} changé vers ${stateId}`,
+      response.data
+    );
+
+    return response.data;
+  } catch (e: any) {
+    console.error(
+      `❌ Erreur changement état commande #${orderId}:`,
+      e?.response?.data || e.message
+    );
+    throw e;
+  }
+}
 async function getTaxRateFromProduct(productXml: string): Promise<number> {
   try {
     // 1. extract tax rule group from product
@@ -829,14 +859,10 @@ async function processRow(row: CsvOrder) {
   await forceOrderDate(orderId, orderDate)
   console.log(`⏰ Date commande forcée au ${orderDate}`)
 
-  /**
-   * ÉTAPE C : Validation finale
-   * On applique le vrai état et le vrai module.
-   */
   await updateOrderState(orderId, finalStateId)
+  console.log(`IMPORT RÉUSSI : Commande #${orderId} finalisée à l'état ${finalStateId}.`)
 
-  console.log(`✅ IMPORT RÉUSSI : Commande #${orderId} finalisée.`)
-
+  
   return orderId
 }
 /* =====================================================

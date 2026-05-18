@@ -72,7 +72,8 @@ const loadData = async () => {
             id: cleanId(s.id),
             id_product: cleanId(s.id_product),
             id_product_attribute: cleanId(s.id_product_attribute),
-            quantity: parseInt(getXmlText(s.quantity) || '0', 10)
+            quantity: parseInt(getXmlText(s.quantity) || '0', 10),           // disponible (lecture seule, affiché en info)
+            physical_quantity: parseInt(getXmlText(s.physical_quantity) || '0', 10)  // physique (modifiable)
         }));
 
         const rawCombos = [].concat(comboData?.prestashop?.combinations?.combination || []);
@@ -123,6 +124,7 @@ const productRows = computed(() => {
                 name: variationName,
                 stockId: comboStock ? comboStock.id : null,
                 quantity: comboStock ? comboStock.quantity : 0,
+                physical_quantity: comboStock ? comboStock.physical_quantity : 0,
                 attributeId: combo.id,
                 reference: p.reference,
                 date_add: p.date_add, // <-- Les déclinaisons héritent de la date du produit par défaut
@@ -137,6 +139,9 @@ const productRows = computed(() => {
         const totalQuantity = hasCombinations
             ? children.reduce((sum, child) => sum + child.quantity, 0)
             : (mainStock ? mainStock.quantity : 0);
+        const totalPhysical = hasCombinations
+            ? children.reduce((sum, child) => sum + child.physical_quantity, 0)
+            : (mainStock ? mainStock.physical_quantity : 0);
 
         return {
             ...p,
@@ -144,6 +149,7 @@ const productRows = computed(() => {
             children,
             stockId: mainStock ? mainStock.id : null,
             quantity: totalQuantity,
+            physical_quantity: totalPhysical,
             isExpanded: !!expandedProducts.value[p.id],
             date_add: p.date_add, // <-- AJOUTER cette ligne pour le produit simple
             available_date: p.available_date
@@ -190,8 +196,8 @@ const updateQuantity = async (target, delta) => {
         // Mutation locale sécurisée après validation API
         const stockEntry = stocks.value.find(s => s.id === target.stockId);
         if (stockEntry) {
-            const updatedQty = stockEntry.quantity + delta;
-            stockEntry.quantity = updatedQty < 0 ? 0 : updatedQty;
+            const updatedPhysical = stockEntry.physical_quantity + delta;
+            stockEntry.physical_quantity = updatedPhysical < 0 ? 0 : updatedPhysical;
         }
 
         // Resynchronisation stricte depuis le serveur PrestaShop
@@ -216,7 +222,7 @@ const handleManualInput = (event, target) => {
         return;
     }
 
-    const delta = newValue - target.quantity;
+    const delta = newValue - target.physical_quantity;
     if (delta !== 0) {
         updateQuantity(target, delta);
     }
@@ -254,6 +260,7 @@ const refreshSingleStock = async (productId, productAttributeId) => {
 
         if (stockEntry) {
             stockEntry.quantity = parseInt(getXmlText(found.quantity) || '0', 10);
+            stockEntry.physical_quantity = parseInt(getXmlText(found.physical_quantity) || '0', 10);  // ← AJOUTER
         }
     } catch (err) {
         console.error('Erreur refresh stock:', err);
@@ -301,7 +308,7 @@ const viewEvolution = async (productRow, attributeId = '0', displayName = '') =>
                 let bestMatchIdx = -1;
                 let bestTimeDiff = Infinity;
 
-            
+
             }
 
             correlatedMovements.push({
@@ -432,10 +439,16 @@ onMounted(() => {
                                     <td>{{ product.reference || '-' }}</td>
 
                                     <td class="text-center">
-                                        <span class="badge px-3 py-2 fs-6 shadow-xs"
-                                            :class="product.quantity > 5 ? 'bg-success' : (product.quantity > 0 ? 'bg-warning text-dark' : 'bg-danger')">
-                                            {{ product.quantity }} {{ product.hasCombinations ? 'Total' : '' }}
-                                        </span>
+                                        <div class="d-flex flex-column align-items-center gap-1">
+                                            <span class="badge px-3 py-2 fs-6 shadow-xs"
+                                                :class="product.physical_quantity > 5 ? 'bg-success' : (product.physical_quantity > 0 ? 'bg-warning text-dark' : 'bg-danger')">
+                                                {{ product.physical_quantity }} {{ product.hasCombinations ? 'Total' :
+                                                    '' }}
+                                            </span>
+                                            <span class="text-muted" style="font-size:0.72rem;">
+                                                Dispo : {{ product.physical_quantity }}
+                                            </span>
+                                        </div>
                                     </td>
 
                                     <td class="text-center">
@@ -443,7 +456,7 @@ onMounted(() => {
                                             class="d-inline-flex align-items-center bg-light rounded p-1 border">
                                             <button class="btn btn-sm btn-outline-secondary border-0 icon-btn"
                                                 @click="updateQuantity(product, -1)"
-                                                :disabled="updatingId === product.stockId || product.quantity <= 0">
+                                                :disabled="updatingId === product.stockId || product.physical_quantity <= 0">
                                                 <span v-if="updatingId === product.stockId"
                                                     class="spinner-border spinner-border-sm"></span>
                                                 <i v-else class="bi bi-dash-lg"></i>
@@ -452,9 +465,9 @@ onMounted(() => {
                                             <!-- INPUT SÉCURISÉ MÈRE -->
                                             <input type="number"
                                                 class="form-control form-control-sm text-center mx-2 manual-qty-input"
-                                                :value="product.quantity" :disabled="updatingId === product.stockId"
+                                                :value="product.physical_quantity" :disabled="updatingId === product.stockId"
                                                 min="0" @keydown.enter.prevent="handleManualInput($event, product)"
-                                                @keydown.esc="handleResetInput($event, product.quantity)"
+                                                @keydown.esc="handleResetInput($event, product.physical_quantity)"
                                                 @blur="handleManualInput($event, product)" />
 
                                             <button class="btn btn-sm btn-outline-secondary border-0 icon-btn"
@@ -494,10 +507,15 @@ onMounted(() => {
                                         <td class="text-muted small-text">{{ child.reference || '-' }}</td>
 
                                         <td class="text-center">
-                                            <span class="badge px-3 py-2 fs-6 shadow-xs"
-                                                :class="child.quantity > 5 ? 'bg-success' : (child.quantity > 0 ? 'bg-warning text-dark' : 'bg-danger')">
-                                                {{ child.quantity }}
-                                            </span>
+                                            <div class="d-flex flex-column align-items-center gap-1">
+                                                <span class="badge px-3 py-2 fs-6 shadow-xs"
+                                                    :class="child.physical_quantity > 5 ? 'bg-success' : (child.physical_quantity > 0 ? 'bg-warning text-dark' : 'bg-danger')">
+                                                    {{ child.physical_quantity }}
+                                                </span>
+                                                <span class="text-muted" style="font-size:0.72rem;">
+                                                    Dispo : {{ child.quantity }}
+                                                </span>
+                                            </div>
                                         </td>
 
                                         <td class="text-center">
@@ -587,7 +605,7 @@ onMounted(() => {
                                             <td class="ps-3">
                                                 {{ new Date(mvt.date).toLocaleDateString('fr-FR', {
                                                     weekday: 'short', year: 'numeric', month: 'short', day: 'numeric', hour:
-                                                '2-digit', minute: '2-digit'
+                                                        '2-digit', minute: '2-digit'
                                                 }) }}
                                             </td>
                                             <td>{{ mvt.reason }}</td>
@@ -595,7 +613,7 @@ onMounted(() => {
                                                 <span class="badge"
                                                     :class="mvt.id === 'initial' ? 'bg-secondary' : (mvt.sign === 1 ? 'bg-success' : 'bg-danger')">
                                                     {{ mvt.id === 'initial' ? '' : (mvt.sign === 1 ? '+' : '-') }}{{
-                                                    mvt.change
+                                                        mvt.change
                                                     }}
                                                 </span>
                                             </td>
