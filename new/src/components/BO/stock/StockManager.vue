@@ -4,7 +4,8 @@ import { psGet } from '../../../utils/prestashop-api';
 import {
     cleanId,
     getXmlText,
-    extractText
+    extractText,
+    psUpdateStockQuantity
 } from '../../../utils/products/product-api';
 
 /**
@@ -48,12 +49,16 @@ const loadData = async () => {
             prodData,
             stockData,
             comboData,
-            optValData
+            optValData,
+            ordersData,
+            orderDetailsData
         ] = await Promise.all([
-            psGet('products', '', { display: '[id,name,reference,price,date_add,available_date]' }), // <-- AJOUT date_add et available_date ici
+            psGet('products', '', { display: '[id,name,reference,price,date_add,available_date]' }),
             psGet('stock_availables', '', { display: 'full' }),
-            psGet('combinations', '', { display: 'full' }), // Note: PrestaShop stocke souvent la date au niveau produit, mais si tes combinaisons ont un date_add, il est pris aussi
-            psGet('product_option_values', '', { display: 'full' })
+            psGet('combinations', '', { display: 'full' }),
+            psGet('product_option_values', '', { display: 'full' }),
+            psGet('orders', '', { display: '[id,current_state]' }),
+            psGet('order_details', '', { display: '[id_order,product_id,product_attribute_id,product_quantity]' })
         ]);
 
         const rawProducts = prodData?.prestashop?.products?.product || [];
@@ -67,14 +72,48 @@ const loadData = async () => {
             available_date: getXmlText(p.available_date)
         }));
 
+        // Calcul des stocks réservés à partir des commandes actives
+        const rawOrders = [].concat(ordersData?.prestashop?.orders?.order || []);
+        const activeOrderIds = new Set(
+            rawOrders
+                .filter(o => {
+                    const state = String(getXmlText(o.current_state));
+                    // Commandes actives: pas Annulé (6), Livré (5), Expédié (4), Remboursé (7)
+                    return state !== '4' && state !== '5' && state !== '6' && state !== '7';
+                })
+                .map(o => String(getXmlText(o.id)))
+        );
+
+        const rawOrderDetails = [].concat(orderDetailsData?.prestashop?.order_details?.order_detail || []);
+        const reservedMap = {};
+        rawOrderDetails.forEach(od => {
+            const orderId = String(getXmlText(od.id_order));
+            if (activeOrderIds.has(orderId)) {
+                const pId = String(getXmlText(od.product_id));
+                const attrId = String(getXmlText(od.product_attribute_id) || '0');
+                const qty = parseInt(getXmlText(od.product_quantity) || '0', 10);
+                const key = `${pId}-${attrId}`;
+                reservedMap[key] = (reservedMap[key] || 0) + qty;
+            }
+        });
+
         const rawStocks = [].concat(stockData?.prestashop?.stock_availables?.stock_available || []);
-        stocks.value = rawStocks.map(s => ({
-            id: cleanId(s.id),
-            id_product: cleanId(s.id_product),
-            id_product_attribute: cleanId(s.id_product_attribute),
-            quantity: parseInt(getXmlText(s.quantity) || '0', 10),           // disponible (lecture seule, affiché en info)
-            physical_quantity: parseInt(getXmlText(s.physical_quantity) || '0', 10)  // physique (modifiable)
-        }));
+        stocks.value = rawStocks.map(s => {
+            const id_product = cleanId(s.id_product);
+            const id_product_attribute = cleanId(s.id_product_attribute) || '0';
+            const quantity = parseInt(getXmlText(s.quantity) || '0', 10); // disponible
+            const reserved = reservedMap[`${id_product}-${id_product_attribute}`] || 0;
+            const physical = quantity + reserved;
+
+            return {
+                id: cleanId(s.id),
+                id_product,
+                id_product_attribute,
+                quantity, // disponible
+                reserved_quantity: reserved,
+                physical_quantity: physical
+            };
+        });
 
         const rawCombos = [].concat(comboData?.prestashop?.combinations?.combination || []);
         combinations.value = rawCombos.map(c => ({
@@ -124,6 +163,7 @@ const productRows = computed(() => {
                 name: variationName,
                 stockId: comboStock ? comboStock.id : null,
                 quantity: comboStock ? comboStock.quantity : 0,
+                reserved_quantity: comboStock ? comboStock.reserved_quantity : 0,
                 physical_quantity: comboStock ? comboStock.physical_quantity : 0,
                 attributeId: combo.id,
                 reference: p.reference,
@@ -139,6 +179,9 @@ const productRows = computed(() => {
         const totalQuantity = hasCombinations
             ? children.reduce((sum, child) => sum + child.quantity, 0)
             : (mainStock ? mainStock.quantity : 0);
+        const totalReserved = hasCombinations
+            ? children.reduce((sum, child) => sum + child.reserved_quantity, 0)
+            : (mainStock ? mainStock.reserved_quantity : 0);
         const totalPhysical = hasCombinations
             ? children.reduce((sum, child) => sum + child.physical_quantity, 0)
             : (mainStock ? mainStock.physical_quantity : 0);
@@ -149,6 +192,7 @@ const productRows = computed(() => {
             children,
             stockId: mainStock ? mainStock.id : null,
             quantity: totalQuantity,
+            reserved_quantity: totalReserved,
             physical_quantity: totalPhysical,
             isExpanded: !!expandedProducts.value[p.id],
             date_add: p.date_add, // <-- AJOUTER cette ligne pour le produit simple
@@ -170,34 +214,19 @@ const updateQuantity = async (target, delta) => {
     const productId = target.id_product || target.id;
 
     try {
-        const xmlData = `<?xml version="1.0" encoding="UTF-8"?>
-<prestashop xmlns:xlink="http://www.w3.org/1999/xlink">
-    <stock_delta>
-        <id_product>${productId}</id_product>
-        <id_product_attribute>${attributeId}</id_product_attribute>
-        <delta>${delta}</delta>
-    </stock_delta>
-</prestashop>`;
+        // Nouvelle quantité disponible = quantité disponible actuelle + delta
+        const newQuantity = Math.max(0, target.quantity + delta);
 
-        const response = await fetch(`${API_URL}/stock_deltas?ws_key=${WS_KEY}`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/xml',
-                'Accept': 'application/xml'
-            },
-            body: xmlData
-        });
-
-        if (!response.ok) {
-            const errText = await response.text();
-            throw new Error(`HTTP ${response.status}\n${errText}`);
-        }
+        await psUpdateStockQuantity(target.stockId, productId, attributeId, newQuantity);
 
         // Mutation locale sécurisée après validation API
         const stockEntry = stocks.value.find(s => s.id === target.stockId);
         if (stockEntry) {
             const updatedPhysical = stockEntry.physical_quantity + delta;
             stockEntry.physical_quantity = updatedPhysical < 0 ? 0 : updatedPhysical;
+            
+            const updatedAvailable = stockEntry.quantity + delta;
+            stockEntry.quantity = updatedAvailable < 0 ? 0 : updatedAvailable;
         }
 
         // Resynchronisation stricte depuis le serveur PrestaShop
@@ -260,7 +289,7 @@ const refreshSingleStock = async (productId, productAttributeId) => {
 
         if (stockEntry) {
             stockEntry.quantity = parseInt(getXmlText(found.quantity) || '0', 10);
-            stockEntry.physical_quantity = parseInt(getXmlText(found.physical_quantity) || '0', 10);  // ← AJOUTER
+            stockEntry.physical_quantity = stockEntry.quantity + (stockEntry.reserved_quantity || 0);
         }
     } catch (err) {
         console.error('Erreur refresh stock:', err);
@@ -282,13 +311,18 @@ const viewEvolution = async (productRow, attributeId = '0', displayName = '') =>
     stockMovements.value = [];
 
     try {
-        // 1. Récupérer les stock_deltas
-        const deltasData = await psGet('stock_deltas', '', {
-            [`filter[id_product]`]: productRow.id,
-            display: 'full'
-        });
-        const rawDeltas = [].concat(deltasData?.prestashop?.stock_deltas?.stock_delta || []);
-        const filteredDeltas = rawDeltas.filter(m => cleanId(m.id_product_attribute || '0') === String(attributeId));
+        // 1. Récupérer les mouvements de stock de manière sécurisée
+        let filteredDeltas = [];
+        try {
+            const deltasData = await psGet('stock_movements', '', {
+                [`filter[id_product]`]: productRow.id,
+                display: 'full'
+            });
+            const rawDeltas = [].concat(deltasData?.prestashop?.stock_movements?.stock_movement || deltasData?.prestashop?.stock_mvts?.stock_mvt || []);
+            filteredDeltas = rawDeltas.filter(m => cleanId(m.id_product_attribute || '0') === String(attributeId));
+        } catch (mvtErr) {
+            console.warn("Impossible de récupérer les mouvements de stock:", mvtErr);
+        }
 
         // 2. Récupérer les mouvements issus des commandes
 
@@ -440,14 +474,14 @@ onMounted(() => {
 
                                     <td class="text-center">
                                         <div class="d-flex flex-column align-items-center gap-1">
-                                            <span class="badge px-3 py-2 fs-6 shadow-xs"
-                                                :class="product.physical_quantity > 5 ? 'bg-success' : (product.physical_quantity > 0 ? 'bg-warning text-dark' : 'bg-danger')">
-                                                {{ product.physical_quantity }} {{ product.hasCombinations ? 'Total' :
-                                                    '' }}
+                                            <span class="badge px-3 py-2 fs-6 shadow-sm border border-2"
+                                                :class="product.physical_quantity > 5 ? 'bg-success border-success-subtle' : (product.physical_quantity > 0 ? 'bg-warning border-warning-subtle text-dark' : 'bg-danger border-danger-subtle')">
+                                                <i class="bi bi-box-seam me-1"></i> {{ product.physical_quantity }} {{ product.hasCombinations ? 'Total' : '' }}
                                             </span>
-                                            <span class="text-muted" style="font-size:0.72rem;">
-                                                Dispo : {{ product.physical_quantity }}
-                                            </span>
+                                            <div class="d-flex gap-2 justify-content-center mt-1" style="font-size:0.72rem;">
+                                                <span class="text-secondary bg-secondary-subtle px-2 py-0.5 rounded">Dispo : {{ product.quantity }}</span>
+                                                <span class="text-info bg-info-subtle px-2 py-0.5 rounded">Réservé : {{ product.reserved_quantity }}</span>
+                                            </div>
                                         </div>
                                     </td>
 
@@ -508,13 +542,14 @@ onMounted(() => {
 
                                         <td class="text-center">
                                             <div class="d-flex flex-column align-items-center gap-1">
-                                                <span class="badge px-3 py-2 fs-6 shadow-xs"
-                                                    :class="child.physical_quantity > 5 ? 'bg-success' : (child.physical_quantity > 0 ? 'bg-warning text-dark' : 'bg-danger')">
-                                                    {{ child.physical_quantity }}
+                                                <span class="badge px-3 py-2 fs-6 shadow-sm border border-2"
+                                                    :class="child.physical_quantity > 5 ? 'bg-success border-success-subtle' : (child.physical_quantity > 0 ? 'bg-warning border-warning-subtle text-dark' : 'bg-danger border-danger-subtle')">
+                                                    <i class="bi bi-box-seam me-1"></i> {{ child.physical_quantity }}
                                                 </span>
-                                                <span class="text-muted" style="font-size:0.72rem;">
-                                                    Dispo : {{ child.quantity }}
-                                                </span>
+                                                <div class="d-flex gap-2 justify-content-center mt-1" style="font-size:0.72rem;">
+                                                    <span class="text-secondary bg-secondary-subtle px-2 py-0.5 rounded">Dispo : {{ child.quantity }}</span>
+                                                    <span class="text-info bg-info-subtle px-2 py-0.5 rounded">Réservé : {{ child.reserved_quantity }}</span>
+                                                </div>
                                             </div>
                                         </td>
 
@@ -523,7 +558,7 @@ onMounted(() => {
                                                 class="d-inline-flex align-items-center bg-white rounded p-1 border shadow-xs">
                                                 <button class="btn btn-sm btn-outline-secondary border-0 icon-btn"
                                                     @click="updateQuantity({ ...child, id_product: product.id }, -1)"
-                                                    :disabled="updatingId === child.stockId || child.quantity <= 0">
+                                                    :disabled="updatingId === child.stockId || child.physical_quantity <= 0">
                                                     <span v-if="updatingId === child.stockId"
                                                         class="spinner-border spinner-border-sm"></span>
                                                     <i v-else class="bi bi-dash-lg"></i>
@@ -532,10 +567,10 @@ onMounted(() => {
                                                 <!-- INPUT SÉCURISÉ ENFANT -->
                                                 <input type="number"
                                                     class="form-control form-control-sm text-center mx-2 manual-qty-input"
-                                                    :value="child.quantity" :disabled="updatingId === child.stockId"
+                                                    :value="child.physical_quantity" :disabled="updatingId === child.stockId"
                                                     min="0"
                                                     @keydown.enter.prevent="handleManualInput($event, { ...child, id_product: product.id })"
-                                                    @keydown.esc="handleResetInput($event, child.quantity)"
+                                                    @keydown.esc="handleResetInput($event, child.physical_quantity)"
                                                     @blur="handleManualInput($event, { ...child, id_product: product.id })" />
 
                                                 <button class="btn btn-sm btn-outline-secondary border-0 icon-btn"

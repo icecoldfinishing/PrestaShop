@@ -993,3 +993,32 @@ export async function psUpdateCart(cartId, customerId, items, addressId) {
   console.log(`PUT Cart #${cartId} XML Preview:`, cartXml.substring(0, 800));
   return psPut(`carts/${cartId}`, cartXml);
 }
+
+/**
+ * Met à jour la quantité disponible d'un stock dans PrestaShop (via PUT stock_availables).
+ * 
+ * @param {string|number} stockId
+ * @param {string|number} productId
+ * @param {string|number} productAttributeId
+ * @param {number} newQuantity
+ * @returns {Promise<any>}
+ */
+export async function psUpdateStockQuantity(stockId, productId, productAttributeId, newQuantity) {
+  if (!stockId) throw new Error("Stock ID requis.");
+
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<prestashop xmlns:xlink="http://www.w3.org/1999/xlink">
+  <stock_available>
+    <id>${stockId}</id>
+    <id_product>${productId}</id_product>
+    <id_product_attribute>${productAttributeId || 0}</id_product_attribute>
+    <quantity>${newQuantity}</quantity>
+    <id_shop>1</id_shop>
+    <id_shop_group>0</id_shop_group>
+    <depends_on_stock>0</depends_on_stock>
+    <out_of_stock>2</out_of_stock>
+  </stock_available>
+</prestashop>`;
+
+  return psPut(`stock_availables/${stockId}`, xml);
+}
