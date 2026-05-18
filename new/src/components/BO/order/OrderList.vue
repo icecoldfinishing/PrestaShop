@@ -314,7 +314,21 @@ const getStateLabel = (stateId) => {
 /* ─────────────────────────────────────────
    LIST & REFRESH
 ───────────────────────────────────────── */
-const allItems = computed(() => [...carts.value, ...orders.value]);
+const selectedState = ref('');
+
+const allItems = computed(() => {
+    let items = [...carts.value, ...orders.value];
+    if (selectedState.value) {
+        items = items.filter(item => {
+            const stateId = getActiveStateId(item.id, item.type);
+            if (selectedState.value === CART_SENTINEL) {
+                return stateId === CART_SENTINEL || item.type === 'cart';
+            }
+            return String(stateId) === String(selectedState.value);
+        });
+    }
+    return items;
+});
 
 const refresh = async () => {
     loading.value = true;
@@ -339,7 +353,19 @@ onMounted(async () => {
 <template>
     <div class="container py-4">
 
-        <h2 class="fw-bold mb-3">Panier + Commandes</h2>
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-3">
+            <h2 class="fw-bold mb-0">Panier + Commandes</h2>
+            <div class="d-flex align-items-center gap-2">
+                <label class="small text-muted fw-semibold">Statut :</label>
+                <select v-model="selectedState" class="form-select form-select-sm" style="width: auto; min-width: 150px;">
+                    <option value="">Tous les statuts</option>
+                    <option :value="CART_SENTINEL">Dans le panier</option>
+                    <option :value="paidStateId">Paiement accepté</option>
+                    <option :value="deliveredStateId">Livré</option>
+                    <option :value="canceledStateId">Annulé</option>
+                </select>
+            </div>
+        </div>
 
         <!-- ===== LOG PANEL ===== -->
         <div class="mb-4 p-3 rounded"
@@ -381,18 +407,19 @@ onMounted(async () => {
                                 Sur une commande → déclenche CAS C (DELETE).
                                 Sur un panier   → désactivé (déjà panier).
                             -->
-                            <button class="btn btn-sm"
-                                :class="isCanceled(item.id, item.type) ? 'btn-danger' : 'btn-outline-danger'"
-                                :disabled="updatingId === `${item.type}-${item.id}`"
-                                @click="setOrderState(item.id, item.type, canceledStateId)">
-                                Annulé
-                            </button>
+                            
                             <button class="btn btn-sm"
                                 :class="isCart(item.id, item.type) ? 'btn-secondary' : 'btn-outline-secondary'"
                                 :disabled="updatingId === `${item.type}-${item.id}` || isCart(item.id, item.type)"
                                 :title="item.type === 'order' ? 'Supprime la commande et libère le panier' : 'Déjà un panier'"
                                 @click="setOrderState(item.id, item.type, CART_SENTINEL)">
                                 Panier
+                            </button>
+                            <button class="btn btn-sm"
+                                :class="isCanceled(item.id, item.type) ? 'btn-danger' : 'btn-outline-danger'"
+                                :disabled="updatingId === `${item.type}-${item.id}`"
+                                @click="setOrderState(item.id, item.type, canceledStateId)">
+                                Annulé
                             </button>
 
                             <button class="btn btn-sm"
