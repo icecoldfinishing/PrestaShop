@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 import { psGet } from '../../../utils/prestashop-api';
+import { psUpdateOrderStateCustom } from '../../../utils/products/product-api';
 import {
     cart,
     psCreateOrder,
@@ -238,6 +239,8 @@ const finalizeCheckout = async () => {
             secureKey: cartSecureKey,
             lineItems,
         });
+
+        await psUpdateOrderStateCustom(orderId, 2);
 
         if (!orderId) throw new Error('Commande refusée ou id absent dans la réponse.');
         addLog(`✅ Commande #${orderId} enregistrée.`);

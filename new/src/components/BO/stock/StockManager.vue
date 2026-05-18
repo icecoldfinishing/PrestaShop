@@ -391,13 +391,15 @@ const viewEvolution = async (productRow, attributeId = '0', displayName = '') =>
                     if (!ord) return;
 
                     const state = ord.current_state;
-                    const isCancelled = ['6', '7'].includes(state);
+                    // Prendre uniquement les commandes avec statut livré (5)
+                    if (state !== '5') return;
+
                     const qty = parseInt(getXmlText(d.product_quantity) || '0', 10);
 
                     correlatedMovements.push({
                         id: `order-${cleanId(d.id) || orderId}`,
                         date: ord.date_add,
-                        reason: `Vente (Commande #${orderId})${isCancelled ? ' - Annulée' : ''}`,
+                        reason: `Vente (Commande #${orderId})`,
                         change: qty,
                         sign: -1,
                         delta: -qty
