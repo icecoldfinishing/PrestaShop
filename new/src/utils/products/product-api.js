@@ -190,6 +190,42 @@ export async function psUpdateOrderState(orderId, stateId) {
   return psPost("order_histories", xmlData);
 }
 
+export const psUpdateOrderStateCustom = async(orderId, stateId) => {
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<prestashop>
+  <order_state_update>
+    <id_order>${orderId}</id_order>
+    <id_order_state>${stateId}</id_order_state>
+  </order_state_update>
+</prestashop>`;
+
+  try {
+    const response = await axios.post(
+      `${BASE_URL}/order_state_update?ws_key=${API_KEY}`,
+      xml,
+      {
+        headers: {
+          'Content-Type': 'application/xml',
+          Accept: 'application/xml',
+        },
+      }
+    );
+
+    console.log(
+      `✅ État commande #${orderId} changé vers ${stateId}`,
+      response.data
+    );
+
+    return response.data;
+  } catch (error) {
+    console.error(
+      `❌ Erreur changement état commande #${orderId}:`,
+      error?.response?.data || error.message
+    );
+    throw error;
+  }
+}
+
 export function getXmlText(value) {
   if (value === null || value === undefined) return '';
   if (typeof value === 'object' && '#text' in value) {

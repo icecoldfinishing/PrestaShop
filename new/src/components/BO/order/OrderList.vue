@@ -2,7 +2,7 @@
 import { ref, computed, onMounted } from 'vue';
 import axios from 'axios';
 import { psGet } from '../../../utils/prestashop-api';
-import { getXmlText, psUpdateOrderState, psEnsureCustomerAddress, psGetCartSecureKey, psCreateOrder, psLoadCartItems } from '../../../utils/products/product-api';
+import { getXmlText, psUpdateOrderState,psUpdateOrderStateCustom, psEnsureCustomerAddress, psGetCartSecureKey, psCreateOrder, psLoadCartItems } from '../../../utils/products/product-api';
 
 /* ─────────────────────────────────────────
    LOG VISIBLE dans l'UI (20 derniers msgs)
@@ -244,7 +244,7 @@ const setOrderState = async (id, type, stateId) => {
                 })),
             });
             addLog(`✅ Commande #${newOrderId} créée`);
-            await psUpdateOrderState(newOrderId, stateId);
+            await psUpdateOrderStateCustom(newOrderId, stateId);
             addLog(`🔁 État #${stateId} appliqué`);
         }
 
@@ -278,7 +278,7 @@ const setOrderState = async (id, type, stateId) => {
         /* ── D : COMMANDE → autre état ───────────── */
         else if (type === 'order' && !isCartAction(stateId)) {
             addLog(`✏️ Commande #${id} → état #${stateId}`);
-            await psUpdateOrderState(id, stateId);
+            await psUpdateOrderStateCustom(id, stateId);
             orderStateMap.value[`order-${id}`] = stateId;
             addLog(`✅ Statut mis à jour`);
         }
