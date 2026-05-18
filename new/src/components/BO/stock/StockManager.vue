@@ -6,7 +6,6 @@ import {
     getXmlText,
     extractText
 } from '../../../utils/products/product-api';
-import { psGetStockMovementsFromOrders } from '../../../utils/stocks/stock-api';
 
 /**
  * =========================================================
@@ -285,10 +284,8 @@ const viewEvolution = async (productRow, attributeId = '0', displayName = '') =>
         const filteredDeltas = rawDeltas.filter(m => cleanId(m.id_product_attribute || '0') === String(attributeId));
 
         // 2. Récupérer les mouvements issus des commandes
-        const orderMovements = await psGetStockMovementsFromOrders(productRow.id, attributeId);
 
         // Copie mutable des commandes pour le tracking des correspondances
-        let unmatchedOrders = [...orderMovements];
         const correlatedMovements = [];
 
         // 3. Traiter les stock_deltas et chercher une correspondance avec les commandes
@@ -304,23 +301,7 @@ const viewEvolution = async (productRow, attributeId = '0', displayName = '') =>
                 let bestMatchIdx = -1;
                 let bestTimeDiff = Infinity;
 
-                unmatchedOrders.forEach((orderMvt, idx) => {
-                    if (Math.abs(orderMvt.change) === targetQty) {
-                        const orderTime = new Date(orderMvt.date).getTime();
-                        const timeDiff = Math.abs(mvtTime - orderTime);
-
-                        // Si la différence est inférieure à 5 minutes, on considère que c'est lié à cette commande
-                        if (timeDiff < 5 * 60 * 1000 && timeDiff < bestTimeDiff) {
-                            bestMatchIdx = idx;
-                            bestTimeDiff = timeDiff;
-                        }
-                    }
-                });
-
-                if (bestMatchIdx !== -1) {
-                    reason = unmatchedOrders[bestMatchIdx].reason; // Ex: "Commande #12"
-                    unmatchedOrders.splice(bestMatchIdx, 1);
-                }
+            
             }
 
             correlatedMovements.push({
@@ -333,17 +314,6 @@ const viewEvolution = async (productRow, attributeId = '0', displayName = '') =>
             });
         }
 
-        // 4. Ajouter les commandes historiques qui n'ont pas eu de stock_delta enregistré
-        unmatchedOrders.forEach(orderMvt => {
-            correlatedMovements.push({
-                id: orderMvt.id,
-                date: orderMvt.date,
-                reason: orderMvt.reason,
-                change: Math.abs(orderMvt.change),
-                sign: -1,
-                delta: orderMvt.change
-            });
-        });
 
         // 5. Trier tous les mouvements par date décroissante
         correlatedMovements.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
