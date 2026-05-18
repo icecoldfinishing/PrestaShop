@@ -10,6 +10,7 @@ import Import from "./components/BO/import/Import.vue";
 import HomeFO from "./components/FO/home/Home.vue";
 
 import ProductList from "./components/BO/product/ProductList.vue";
+import Stat from "./components/BO/stat/Stat.vue";
 import ProductDetailFO from "./components/FO/product/ProductDetail.vue";
 import Cart from "./components/FO/cart/Cart.vue";
 import FoOrders from "./components/FO/order/OrderList.vue";
@@ -40,6 +41,7 @@ const PAGE = {
   BO_HOME: "home",
   BO_PRODUCTS: "products-list",
   BO_STOCKS: "stocks-list",
+  BO_STAT: "stats",
 
   BO_ORDERS: "orders-list",
   BO_AUTH: "auth",
@@ -288,6 +290,10 @@ const switchMode = (newMode) => {
             Orders
             <!-- Pas encore de count admin ici, mais on pourrait -->
           </a>
+          <a class="nav-link text-white" :class="{ 'bg-primary': currentPage === PAGE.BO_STAT }"
+            @click="currentPage = PAGE.BO_STAT">
+            Stats
+          </a>
         </div>
       </div>
 
@@ -350,7 +356,7 @@ const switchMode = (newMode) => {
         <ProductList v-if="mode === 'BO' && currentPage === PAGE.BO_PRODUCTS" @edit="openEditProduct" />
 
         <StockManager v-if="mode === 'BO' && currentPage === PAGE.BO_STOCKS" />
-
+        <Stat v-if="mode === 'BO' && currentPage === PAGE.BO_STAT" />
         <OrderList v-if="mode === 'BO' && currentPage === PAGE.BO_ORDERS" />
 
         <AdminLogin v-if="mode === 'BO' && currentPage === PAGE.BO_AUTH" @success="handleAdminLogin" />
