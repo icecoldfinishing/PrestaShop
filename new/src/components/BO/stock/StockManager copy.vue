@@ -224,7 +224,7 @@ const updateQuantity = async (target, delta) => {
         if (stockEntry) {
             const updatedPhysical = stockEntry.physical_quantity + delta;
             stockEntry.physical_quantity = updatedPhysical < 0 ? 0 : updatedPhysical;
-
+            
             const updatedAvailable = stockEntry.quantity + delta;
             stockEntry.quantity = updatedAvailable < 0 ? 0 : updatedAvailable;
         }
@@ -336,6 +336,10 @@ const viewEvolution = async (productRow, attributeId = '0', displayName = '') =>
             console.warn("Impossible de récupérer les raisons de mouvement:", reasonErr);
         }
 
+        // 2. Récupérer les mouvements issus des commandes
+
+        // Copie mutable des commandes pour le tracking des correspondances
+        const correlatedMovements = [];
 
         // 3. Traiter les stock_deltas et chercher une correspondance avec les commandes
         for (const mvt of filteredDeltas) {
@@ -343,6 +347,16 @@ const viewEvolution = async (productRow, attributeId = '0', displayName = '') =>
             const mvtDate = getXmlText(mvt.date_add);
             const reasonId = cleanId(mvt.id_stock_movement_reason);
             let reason = movementReasonMap[reasonId] || (delta > 0 ? 'Ajout manuel' : 'Retrait manuel');
+
+            if (delta < 0) {
+                const targetQty = Math.abs(delta);
+                const mvtTime = new Date(mvtDate).getTime();
+
+                let bestMatchIdx = -1;
+                let bestTimeDiff = Infinity;
+
+
+            }
 
             correlatedMovements.push({
                 id: cleanId(mvt.id),
@@ -353,6 +367,7 @@ const viewEvolution = async (productRow, attributeId = '0', displayName = '') =>
                 delta
             });
         }
+
 
         // 5. Trier tous les mouvements par date décroissante
         correlatedMovements.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
@@ -474,16 +489,11 @@ onMounted(() => {
                                         <div class="d-flex flex-column align-items-center gap-1">
                                             <span class="badge px-3 py-2 fs-6 shadow-sm border border-2"
                                                 :class="product.physical_quantity > 5 ? 'bg-success border-success-subtle' : (product.physical_quantity > 0 ? 'bg-warning border-warning-subtle text-dark' : 'bg-danger border-danger-subtle')">
-                                                <i class="bi bi-box-seam me-1"></i> {{ product.physical_quantity }} {{
-                                                    product.hasCombinations ? 'Total' : '' }}
+                                                <i class="bi bi-box-seam me-1"></i> {{ product.physical_quantity }} {{ product.hasCombinations ? 'Total' : '' }}
                                             </span>
-                                            <div class="d-flex gap-2 justify-content-center mt-1"
-                                                style="font-size:0.72rem;">
-                                                <span
-                                                    class="text-secondary bg-secondary-subtle px-2 py-0.5 rounded">Dispo
-                                                    : {{ product.quantity }}</span>
-                                                <span class="text-info bg-info-subtle px-2 py-0.5 rounded">Réservé : {{
-                                                    product.reserved_quantity }}</span>
+                                            <div class="d-flex gap-2 justify-content-center mt-1" style="font-size:0.72rem;">
+                                                <span class="text-secondary bg-secondary-subtle px-2 py-0.5 rounded">Dispo : {{ product.quantity }}</span>
+                                                <span class="text-info bg-info-subtle px-2 py-0.5 rounded">Réservé : {{ product.reserved_quantity }}</span>
                                             </div>
                                         </div>
                                     </td>
@@ -502,9 +512,8 @@ onMounted(() => {
                                             <!-- INPUT SÉCURISÉ MÈRE -->
                                             <input type="number"
                                                 class="form-control form-control-sm text-center mx-2 manual-qty-input"
-                                                :value="product.physical_quantity"
-                                                :disabled="updatingId === product.stockId" min="0"
-                                                @keydown.enter.prevent="handleManualInput($event, product)"
+                                                :value="product.physical_quantity" :disabled="updatingId === product.stockId"
+                                                min="0" @keydown.enter.prevent="handleManualInput($event, product)"
                                                 @keydown.esc="handleResetInput($event, product.physical_quantity)"
                                                 @blur="handleManualInput($event, product)" />
 
@@ -550,13 +559,9 @@ onMounted(() => {
                                                     :class="child.physical_quantity > 5 ? 'bg-success border-success-subtle' : (child.physical_quantity > 0 ? 'bg-warning border-warning-subtle text-dark' : 'bg-danger border-danger-subtle')">
                                                     <i class="bi bi-box-seam me-1"></i> {{ child.physical_quantity }}
                                                 </span>
-                                                <div class="d-flex gap-2 justify-content-center mt-1"
-                                                    style="font-size:0.72rem;">
-                                                    <span
-                                                        class="text-secondary bg-secondary-subtle px-2 py-0.5 rounded">Dispo
-                                                        : {{ child.quantity }}</span>
-                                                    <span class="text-info bg-info-subtle px-2 py-0.5 rounded">Réservé :
-                                                        {{ child.reserved_quantity }}</span>
+                                                <div class="d-flex gap-2 justify-content-center mt-1" style="font-size:0.72rem;">
+                                                    <span class="text-secondary bg-secondary-subtle px-2 py-0.5 rounded">Dispo : {{ child.quantity }}</span>
+                                                    <span class="text-info bg-info-subtle px-2 py-0.5 rounded">Réservé : {{ child.reserved_quantity }}</span>
                                                 </div>
                                             </div>
                                         </td>
@@ -575,8 +580,8 @@ onMounted(() => {
                                                 <!-- INPUT SÉCURISÉ ENFANT -->
                                                 <input type="number"
                                                     class="form-control form-control-sm text-center mx-2 manual-qty-input"
-                                                    :value="child.physical_quantity"
-                                                    :disabled="updatingId === child.stockId" min="0"
+                                                    :value="child.physical_quantity" :disabled="updatingId === child.stockId"
+                                                    min="0"
                                                     @keydown.enter.prevent="handleManualInput($event, { ...child, id_product: product.id })"
                                                     @keydown.esc="handleResetInput($event, child.physical_quantity)"
                                                     @blur="handleManualInput($event, { ...child, id_product: product.id })" />

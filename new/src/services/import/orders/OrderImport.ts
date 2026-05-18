@@ -1,6 +1,5 @@
 import prestashop from "../../prestashop"
 import { cleanId, getXmlText } from "../../../utils/products/product-api";
-import { psUpdateStockByDelta } from "../../../utils/stocks/stock-api";
 import axios from "axios";
 
 

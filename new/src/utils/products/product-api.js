@@ -45,8 +45,8 @@ export async function psGetOrdersLight() {
   const data = await psGet('orders', '', {
     display: '[id,total_paid,date_add,current_state,id_customer]',
     // CORRECTION : On filtre sur l'état 2 OU 10 OU 11
-    // 06 annule
-    'filter[current_state]': '[2|10|11]',
+    // 06 annule et 05 livré
+    'filter[current_state]': '[2|10|11|06|05]',
     sort: '[id_DESC]'
   });
   const raw = data?.prestashop?.orders?.order;
@@ -190,7 +190,7 @@ export async function psUpdateOrderState(orderId, stateId) {
   return psPost("order_histories", xmlData);
 }
 
-export const psUpdateOrderStateCustom = async(orderId, stateId) => {
+export const psUpdateOrderStateCustom = async (orderId, stateId) => {
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <prestashop>
   <order_state_update>
