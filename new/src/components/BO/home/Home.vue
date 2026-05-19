@@ -1,7 +1,7 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue';
 import { psCount } from '../../../utils/prestashop-api';
-import {  psGetOrdersDashboardStats, getXmlText } from '../../../utils/products/product-api';
+import { psGetOrdersDashboardStats, getXmlText } from '../../../utils/products/product-api';
 import { psGet } from '../../../utils/prestashop-api';
 
 const emit = defineEmits(['navigate']);
@@ -25,6 +25,7 @@ const customersMap = ref({});
 const statesMap = ref({});
 const selectedDate = ref(''); // Vide = tous
 const selectedState = ref(''); // Vide = tous
+const REVENUE_FILTER = 'paye_livre';
 
 const formatMoney = (n) => {
     const v = Number(n) || 0;
@@ -100,12 +101,43 @@ const getStateName = (id) => statesMap.value[id] || `Statut #${id}`;
 
 const filteredOrders = computed(() => {
     let result = allOrders.value;
+
+    // filtre date
     if (selectedDate.value) {
-        result = result.filter(o => o.date_add.startsWith(selectedDate.value));
+        result = result.filter(o =>
+            o.date_add.startsWith(selectedDate.value)
+        );
     }
+
+    // filtre statut
     if (selectedState.value) {
-        result = result.filter(o => String(o.current_state) === String(selectedState.value));
+
+        // revenu = payé + livré
+        if (selectedState.value === REVENUE_FILTER) {
+
+            result = result.filter(order => {
+                const stateName = getStateName(order.current_state)
+                    .toLowerCase();
+
+                return (
+                    stateName.includes('pay') ||
+                    stateName.includes('payment') ||
+                    stateName.includes('paiement') ||
+                    stateName.includes('livr') ||
+                    stateName.includes('accept') ||
+                    stateName.includes('delivered')
+                );
+            });
+
+        } else {
+
+            result = result.filter(
+                o => String(o.current_state) === String(selectedState.value)
+            );
+
+        }
     }
+
     return result;
 });
 
@@ -115,7 +147,7 @@ const filteredTotals = computed(() => {
         acc.amount += Number(order.total_paid) || 0;
         return acc;
     }, { count: 0, amount: 0 });
-    
+
     totals.average = totals.count > 0 ? totals.amount / totals.count : 0;
     return totals;
 });
@@ -158,10 +190,7 @@ onMounted(() => {
 
             <div class="row g-3">
                 <div class="col-md-6">
-                    <div
-                        class="card h-100 shadow-sm border-0 cursor-pointer"
-                        @click="emit('navigate', 'csv-import')"
-                    >
+                    <div class="card h-100 shadow-sm border-0 cursor-pointer" @click="emit('navigate', 'csv-import')">
                         <div class="card-body">
                             <h5 class="fw-bold text-success">CSV Import</h5>
                             <p class="text-muted mb-0">
@@ -172,10 +201,7 @@ onMounted(() => {
                 </div>
 
                 <div class="col-md-6">
-                    <div
-                        class="card h-100 shadow-sm border-0 cursor-pointer"
-                        @click="emit('navigate', 'data-reset')"
-                    >
+                    <div class="card h-100 shadow-sm border-0 cursor-pointer" @click="emit('navigate', 'data-reset')">
                         <div class="card-body">
                             <h5 class="fw-bold text-danger">Data Reset</h5>
                             <p class="text-muted mb-0">
@@ -216,10 +242,11 @@ onMounted(() => {
                 <div class="card shadow-sm border-0 hover-shadow stat-card orders-card">
                     <div class="card-body text-center position-relative">
                         <!-- PETITE CLOCHE DE NOTIF -->
-                        <span v-if="stats.orders > 0" class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger border border-light p-2 mt-2 me-2">
+                        <span v-if="stats.orders > 0"
+                            class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger border border-light p-2 mt-2 me-2">
                             <i class="bi bi-bell-fill"></i>
                         </span>
-                        
+
                         <div class="stat-icon mb-2">
                             <i class="bi bi-receipt"></i>
                         </div>
@@ -232,14 +259,19 @@ onMounted(() => {
 
         <!-- TABLEAU DE BORD COMMANDES -->
         <div class="card shadow-sm border-0 mb-5">
-            <div class="card-header bg-white border-bottom py-3 d-flex justify-content-between align-items-center flex-wrap gap-3">
+            <div
+                class="card-header bg-white border-bottom py-3 d-flex justify-content-between align-items-center flex-wrap gap-3">
                 <h4 class="mb-0 fw-bold">Détail des commandes</h4>
-                
+
                 <div class="d-flex align-items-center gap-3 flex-wrap">
                     <div class="d-flex align-items-center gap-2">
                         <label class="small text-muted fw-semibold">Statut :</label>
-                        <select v-model="selectedState" class="form-select form-select-sm" style="width: auto; min-width: 150px;">
+                        <select v-model="selectedState" class="form-select form-select-sm"
+                            style="width: auto; min-width: 150px;">
                             <option value="">Tous les statuts</option>
+                            <option :value="REVENUE_FILTER">
+                                Payé + Livré (Revenue)
+                            </option>
                             <option v-for="(name, id) in statesMap" :key="id" :value="id">
                                 {{ name }}
                             </option>
@@ -265,13 +297,14 @@ onMounted(() => {
                     {{ dashboardError }}
                 </div>
                 <template v-else>
-                    
+
                     <!-- Metrics Summary -->
                     <div class="row mb-4 g-3">
                         <div class="col-md-4">
                             <div class="card bg-light border-0 h-100 shadow-sm">
                                 <div class="card-body text-center d-flex flex-column justify-content-center py-4">
-                                    <h6 class="text-muted mb-2 text-uppercase fw-semibold"><i class="bi bi-receipt me-2"></i>Commandes</h6>
+                                    <h6 class="text-muted mb-2 text-uppercase fw-semibold"><i
+                                            class="bi bi-receipt me-2"></i>Commandes</h6>
                                     <h3 class="mb-0 fw-bold">{{ filteredTotals.count }}</h3>
                                 </div>
                             </div>
@@ -279,16 +312,20 @@ onMounted(() => {
                         <div class="col-md-4">
                             <div class="card bg-success-subtle border-0 h-100 shadow-sm">
                                 <div class="card-body text-center d-flex flex-column justify-content-center py-4">
-                                    <h6 class="text-success-emphasis mb-2 text-uppercase fw-semibold"><i class="bi bi-currency-euro me-2"></i>Valeur générée</h6>
-                                    <h3 class="mb-0 fw-bold text-success">{{ formatMoney(filteredTotals.amount) }} €</h3>
+                                    <h6 class="text-success-emphasis mb-2 text-uppercase fw-semibold"><i
+                                            class="bi bi-currency-euro me-2"></i>Valeur générée</h6>
+                                    <h3 class="mb-0 fw-bold text-success">{{ formatMoney(filteredTotals.amount) }} €
+                                    </h3>
                                 </div>
                             </div>
                         </div>
                         <div class="col-md-4">
                             <div class="card bg-primary-subtle border-0 h-100 shadow-sm">
                                 <div class="card-body text-center d-flex flex-column justify-content-center py-4">
-                                    <h6 class="text-primary-emphasis mb-2 text-uppercase fw-semibold"><i class="bi bi-cart me-2"></i>Panier moyen</h6>
-                                    <h3 class="mb-0 fw-bold text-primary">{{ formatMoney(filteredTotals.average) }} €</h3>
+                                    <h6 class="text-primary-emphasis mb-2 text-uppercase fw-semibold"><i
+                                            class="bi bi-cart me-2"></i>Panier moyen</h6>
+                                    <h3 class="mb-0 fw-bold text-primary">{{ formatMoney(filteredTotals.average) }} €
+                                    </h3>
                                 </div>
                             </div>
                         </div>
@@ -322,15 +359,18 @@ onMounted(() => {
                                         <td class="small text-muted">{{ order.date_add.slice(11, 16) }}</td>
                                         <td>
                                             <div class="d-flex align-items-center">
-                                                <div class="avatar-sm me-2 bg-primary-subtle text-primary rounded-circle d-flex align-items-center justify-content-center fw-bold" style="width: 32px; height: 32px; font-size: 12px;">
+                                                <div class="avatar-sm me-2 bg-primary-subtle text-primary rounded-circle d-flex align-items-center justify-content-center fw-bold"
+                                                    style="width: 32px; height: 32px; font-size: 12px;">
                                                     {{ getCustomerName(order.id_customer).charAt(0) }}
                                                 </div>
                                                 <span class="fw-medium">{{ getCustomerName(order.id_customer) }}</span>
                                             </div>
                                         </td>
-                                        <td class="text-end fw-bold text-dark">{{ formatMoney(order.total_paid) }} €</td>
+                                        <td class="text-end fw-bold text-dark">{{ formatMoney(order.total_paid) }} €
+                                        </td>
                                         <td class="text-center">
-                                            <span class="badge rounded-pill px-3 py-1 bg-success-subtle text-success border border-success-subtle">
+                                            <span
+                                                class="badge rounded-pill px-3 py-1 bg-success-subtle text-success border border-success-subtle">
                                                 {{ getStateName(order.current_state) }}
                                             </span>
                                         </td>
@@ -356,7 +396,7 @@ onMounted(() => {
             </div>
         </div>
 
-        
+
     </div>
 </template>
 
@@ -389,9 +429,17 @@ onMounted(() => {
     border-radius: 15px;
 }
 
-.products-card .stat-icon { color: #0d6efd; }
-.customers-card .stat-icon { color: #198754; }
-.orders-card .stat-icon { color: #ffc107; }
+.products-card .stat-icon {
+    color: #0d6efd;
+}
+
+.customers-card .stat-icon {
+    color: #198754;
+}
+
+.orders-card .stat-icon {
+    color: #ffc107;
+}
 
 .translate-middle {
     transform: translate(-50%, -50%) !important;
