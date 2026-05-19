@@ -19,7 +19,7 @@ const selected = ref({
     products: true,
     combinations: true,
     orders: true,
-    images: true
+    images: false
 })
 
 /* =========================
@@ -148,34 +148,6 @@ async function startImport() {
 
             <!-- CHECKBOX GRID -->
             <div class="row g-3 mb-4">
-
-                <div class="col-md-3">
-                    <div class="form-check border rounded p-3">
-                        <input class="form-check-input"
-                            type="checkbox"
-                            v-model="selected.products">
-                        <label class="form-check-label">Products</label>
-                    </div>
-                </div>
-
-                <div class="col-md-3">
-                    <div class="form-check border rounded p-3">
-                        <input class="form-check-input"
-                            type="checkbox"
-                            v-model="selected.combinations">
-                        <label class="form-check-label">Combinations</label>
-                    </div>
-                </div>
-
-                <div class="col-md-3">
-                    <div class="form-check border rounded p-3">
-                        <input class="form-check-input"
-                            type="checkbox"
-                            v-model="selected.orders">
-                        <label class="form-check-label">Orders</label>
-                    </div>
-                </div>
-
                 <div class="col-md-3">
                     <div class="form-check border rounded p-3">
                         <input class="form-check-input"

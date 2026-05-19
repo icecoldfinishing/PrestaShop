@@ -14,6 +14,7 @@ import Stat from "./components/BO/stat/Stat.vue";
 import ProductDetailFO from "./components/FO/product/ProductDetail.vue";
 import Cart from "./components/FO/cart/Cart.vue";
 import FoOrders from "./components/FO/order/OrderList.vue";
+import OrderDuplicate from "./components/FO/order/OrderDuplicate.vue";
 
 import OrderList from "./components/BO/order/OrderList.vue";
 import StockManager from "./components/BO/stock/StockManager.vue";
@@ -37,6 +38,7 @@ const PAGE = {
   FO_LOGIN: "fo-login",
   FO_CART: "fo-cart",
   FO_ORDERS: "fo-orders",
+  FO_ORDER_DUPLICATE: "fo-order-duplicate",
 
   BO_HOME: "home",
   BO_PRODUCTS: "products-list",
@@ -58,6 +60,8 @@ const foOrdersCount = ref(0);
 const selectedProductId = ref(null);
 const selectedCustomerId = ref(null);
 const selectedFoProductId = ref(null);
+const duplicateOrderId = ref(null);
+const duplicateCount = ref(1);
 
 /* ================= SECURITY ================= */
 const isAdmin = computed(() => !!loggedAdmin.value);
@@ -128,6 +132,12 @@ const goToFoOrders = () => {
     return;
   }
   currentPage.value = PAGE.FO_ORDERS;
+};
+
+const openDuplicateOrder = ({ orderId, count }) => {
+  duplicateOrderId.value = orderId;
+  duplicateCount.value = Number(count) || 1;
+  currentPage.value = PAGE.FO_ORDER_DUPLICATE;
 };
 
 const goToHomeFO = () => {
@@ -348,7 +358,13 @@ const switchMode = (newMode) => {
           @request-login="currentPage = PAGE.FO_USER_PICK" />
 
         <!-- Mes commandes : réservé aux comptes connectés -->
-        <FoOrders v-if="mode === 'FO' && currentPage === PAGE.FO_ORDERS && isCustomer" />
+        <FoOrders v-if="mode === 'FO' && currentPage === PAGE.FO_ORDERS && isCustomer"
+          @duplicate="openDuplicateOrder" />
+
+        <OrderDuplicate v-if="mode === 'FO' && currentPage === PAGE.FO_ORDER_DUPLICATE && isCustomer"
+          :order-id="duplicateOrderId"
+          :count="duplicateCount"
+          @back="goToFoOrders" />
 
         <!-- ================= BO ================= -->
         <Home v-if="mode === 'BO' && currentPage === PAGE.BO_HOME" @navigate="handleHomeNavigate" />

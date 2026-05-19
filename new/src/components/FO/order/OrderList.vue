@@ -20,6 +20,30 @@ type OrderState = {
 const orders = ref<OrderRow[]>([]);
 const orderStates = ref<OrderState[]>([]);
 const loading = ref(false);
+const showDuplicateModal = ref(false);
+const duplicateCount = ref(1);
+const duplicateOrderId = ref<string | null>(null);
+const emit = defineEmits(['duplicate', 'continueShopping']);
+
+const openDuplicateModal = (orderId: string) => {
+  duplicateOrderId.value = orderId;
+  duplicateCount.value = 1;
+  showDuplicateModal.value = true;
+};
+
+const closeDuplicateModal = () => {
+  showDuplicateModal.value = false;
+  duplicateOrderId.value = null;
+};
+
+const confirmDuplicate = () => {
+  if (!duplicateOrderId.value) return;
+  emit('duplicate', {
+    orderId: duplicateOrderId.value,
+    count: duplicateCount.value,
+  });
+  closeDuplicateModal();
+};
 
 const getImageUrl = (productId: string, imageId: string | null) => {
   if (!productId || !imageId) return null;
@@ -197,6 +221,10 @@ onMounted(async () => {
                 <button class="btn btn-outline-dark rounded-pill px-4 btn-sm">
                     Détails de la commande
                 </button>
+                <button class="btn btn-dark rounded-pill px-4 btn-sm ms-2"
+                  @click="openDuplicateModal(order.id)">
+                  Dupliquer la commande
+                </button>
             </div>
 
           </div>
@@ -208,6 +236,24 @@ onMounted(async () => {
 
   </div>
 
+</div>
+
+<div v-if="showDuplicateModal" class="modal-backdrop-custom">
+  <div class="modal-custom">
+    <h5 class="fw-bold mb-2">Dupliquer la commande</h5>
+    <p class="text-muted mb-3">Combien de fois voulez-vous dupliquer la commande ?</p>
+    <div class="d-flex align-items-center gap-2 mb-3">
+      <label class="small text-muted">Nombre</label>
+      <input type="number" min="1" class="form-control form-control-sm"
+        v-model.number="duplicateCount" style="max-width: 120px;">
+    </div>
+    <div class="d-flex justify-content-end gap-2">
+      <button class="btn btn-outline-secondary btn-sm" @click="closeDuplicateModal">Annuler</button>
+      <button class="btn btn-primary btn-sm" @click="confirmDuplicate">
+        Dupliquer ({{ duplicateCount }})
+      </button>
+    </div>
+  </div>
 </div>
 </template>
 
@@ -269,5 +315,23 @@ onMounted(async () => {
     .border-start-md {
         border-left: 1px solid #eee !important;
     }
+}
+
+.modal-backdrop-custom {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1050;
+}
+
+.modal-custom {
+  background: #fff;
+  border-radius: 14px;
+  padding: 20px;
+  width: min(420px, 92vw);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.2);
 }
 </style>
